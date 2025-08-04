@@ -1,6 +1,25 @@
 {
-  "BackupDate": "2024-12-01T14:30:22.123Z",
+  "IncludePhotos": false,
+  "Version": "1.0.0",
+  "UserEmail": "test@example.com",
+  "BackupFormat": "JSON",
   "ContactFolder": "",
+  "BackupFiles": [
+    {
+      "FileSize": 1024,
+      "ContactCount": 2,
+      "FolderName": "Contacts",
+      "FileName": "Contacts-contacts.json"
+    },
+    {
+      "FileSize": 512,
+      "ContactCount": 1,
+      "FolderName": "Vendors",
+      "FileName": "Vendors-contacts.json"
+    }
+  ],
+  "BackupDate": "2024-12-01T14:30:22.123Z",
+  "TotalContacts": 3,
   "ContactFolders": [
     {
       "TotalItems": 2,
@@ -12,24 +31,5 @@
       "Id": "folder-2",
       "DisplayName": "Vendors"
     }
-  ],
-  "BackupFiles": [
-    {
-      "ContactCount": 2,
-      "FileSize": 1024,
-      "FileName": "Contacts-contacts.json",
-      "FolderName": "Contacts"
-    },
-    {
-      "ContactCount": 1,
-      "FileSize": 512,
-      "FileName": "Vendors-contacts.json",
-      "FolderName": "Vendors"
-    }
-  ],
-  "Version": "1.0.0",
-  "BackupFormat": "JSON",
-  "UserEmail": "test@example.com",
-  "TotalContacts": 3,
-  "IncludePhotos": false
+  ]
 }
