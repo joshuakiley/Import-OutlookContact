@@ -1,0 +1,262 @@
+<#
+.SYNOPSIS
+    Import-OutlookContact - Enterprise contact management for Microsoft Outlook
+    
+.DESCRIPTION
+    Main application script for managing Outlook contacts across multiple users and folders.
+    Supports CSV, vCard import, backup/restore, and duplicate management with enterprise security.
+    
+.PARAMETER Mode
+    Operation mode: BulkAdd, OnboardUser, Edit, Backup, Restore, Merge
+    
+.PARAMETER CsvPath
+    Path to CSV/vCard file (required for import modes)
+    
+.PARAMETER UserEmail
+    Target user's email address
+    
+.PARAMETER ContactFolder
+    Target contact folder name (default: "Contacts")
+    
+.PARAMETER DuplicateAction
+    Duplicate handling: Skip, Merge, Overwrite (default: "Skip")
+    
+.PARAMETER MappingProfile
+    Field mapping profile name (default: "Default")
+    
+.PARAMETER BackupEnabled
+    Create backup before operation (default: $true)
+    
+.PARAMETER ValidateOnly
+    Validate file without importing (default: $false)
+    
+.EXAMPLE
+    pwsh .\Import-OutlookContact.ps1 -Mode BulkAdd -CsvPath ".\contacts.csv" -UserEmail "user@domain.com"
+    
+.EXAMPLE
+    pwsh .\Import-OutlookContact.ps1 -Mode BulkAdd -CsvPath ".\vendors.csv" -UserEmail "user@domain.com" -ContactFolder "Vendors" -DuplicateAction "Merge"
+    
+.NOTES
+    Version: 1.0.0
+    Author: Import-OutlookContact Team
+    Requires: PowerShell 7.0+, Microsoft.Graph module
+#>
+
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("BulkAdd", "OnboardUser", "Edit", "Backup", "Restore", "Merge")]
+    [string]$Mode,
+    
+    [Parameter(Mandatory = $false)]
+    [string]$CsvPath,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$UserEmail,
+    
+    [Parameter(Mandatory = $false)]
+    [string]$ContactFolder = "Contacts",
+    
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("Skip", "Merge", "Overwrite")]
+    [string]$DuplicateAction = "Skip",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$MappingProfile = "Default",
+    
+    [Parameter(Mandatory = $false)]
+    [bool]$BackupEnabled = $true,
+    
+    [Parameter(Mandatory = $false)]
+    [bool]$ValidateOnly = $false
+)
+
+# Script metadata
+$script:ApplicationInfo = @{
+    Name = "Import-OutlookContact"
+    Version = "1.0.0"
+    Author = "Import-OutlookContact Team"
+    Copyright = "© 2025 Import-OutlookContact Team"
+}
+
+# Initialize script timing
+$script:StartTime = Get-Date
+
+# Import required modules and configuration
+try {
+    Write-Verbose "Loading application configuration..."
+    
+    # Load configuration
+    $configPath = Join-Path $PSScriptRoot "config" "appsettings.json"
+    if (-not (Test-Path $configPath)) {
+        throw "Configuration file not found: $configPath"
+    }
+    
+    $script:Config = Get-Content $configPath | ConvertFrom-Json
+    Write-Verbose "Configuration loaded successfully"
+    
+    # Load environment-specific overrides
+    $envConfigPath = Join-Path $PSScriptRoot "config" "appsettings.$($script:Config.Application.Environment.ToLower()).json"
+    if (Test-Path $envConfigPath) {
+        $envConfig = Get-Content $envConfigPath | ConvertFrom-Json
+        Write-Verbose "Environment configuration loaded: $($script:Config.Application.Environment)"
+    }
+    
+    # Import core modules
+    Write-Verbose "Importing required PowerShell modules..."
+    
+    # Check if Microsoft.Graph is available
+    if (-not (Get-Module -ListAvailable -Name "Microsoft.Graph")) {
+        throw "Microsoft.Graph module is required. Install with: Install-Module Microsoft.Graph -Scope CurrentUser"
+    }
+    
+    Import-Module Microsoft.Graph -Force -Verbose:$false
+    Write-Verbose "Microsoft.Graph module imported successfully"
+    
+} catch {
+    Write-Error "Failed to initialize application: $($_.Exception.Message)"
+    exit 1
+}
+
+# Main application function
+function Invoke-ImportOutlookContact {
+    [CmdletBinding()]
+    param(
+        [string]$Mode,
+        [string]$CsvPath,
+        [string]$UserEmail,
+        [string]$ContactFolder,
+        [string]$DuplicateAction,
+        [string]$MappingProfile,
+        [bool]$BackupEnabled,
+        [bool]$ValidateOnly
+    )
+    
+    # Initialize result object
+    $result = @{
+        Success = $false
+        Message = ""
+        ImportedCount = 0
+        SkippedCount = 0
+        ErrorCount = 0
+        DuplicatesFound = 0
+        BackupPath = ""
+        Duration = ""
+        Errors = @()
+    }
+    
+    try {
+        Write-Information "Starting Import-OutlookContact operation..." -InformationAction Continue
+        Write-Information "Mode: $Mode" -InformationAction Continue
+        Write-Information "User: $UserEmail" -InformationAction Continue
+        Write-Information "Contact Folder: $ContactFolder" -InformationAction Continue
+        
+        # Validate required parameters for import modes
+        if ($Mode -in @("BulkAdd", "OnboardUser") -and [string]::IsNullOrEmpty($CsvPath)) {
+            throw "CsvPath parameter is required for import operations"
+        }
+        
+        # Validate file exists for import modes
+        if ($Mode -in @("BulkAdd", "OnboardUser") -and -not (Test-Path $CsvPath)) {
+            throw "Import file not found: $CsvPath"
+        }
+        
+        # Validate user email format
+        if ($UserEmail -notmatch '^[^\s@]+@[^\s@]+\.[^\s@]+$') {
+            throw "Invalid email format: $UserEmail"
+        }
+        
+        Write-Information "Parameters validated successfully" -InformationAction Continue
+        
+        # Authenticate with Microsoft Graph
+        Write-Verbose "Authenticating with Microsoft Graph..."
+        try {
+            # TODO: Implement authentication logic based on config
+            # This will be implemented in the next step
+            Write-Warning "Authentication not yet implemented - this is a scaffolding version"
+            
+        } catch {
+            throw "Authentication failed: $($_.Exception.Message)"
+        }
+        
+        # Execute the requested operation
+        switch ($Mode) {
+            "BulkAdd" {
+                Write-Information "Executing bulk add operation..." -InformationAction Continue
+                # TODO: Implement bulk add logic
+                $result.Message = "Bulk add operation - not yet implemented"
+            }
+            "OnboardUser" {
+                Write-Information "Executing onboard user operation..." -InformationAction Continue
+                # TODO: Implement onboard user logic
+                $result.Message = "Onboard user operation - not yet implemented"
+            }
+            "Edit" {
+                Write-Information "Executing edit operation..." -InformationAction Continue
+                # TODO: Implement edit logic
+                $result.Message = "Edit operation - not yet implemented"
+            }
+            "Backup" {
+                Write-Information "Executing backup operation..." -InformationAction Continue
+                # TODO: Implement backup logic
+                $result.Message = "Backup operation - not yet implemented"
+            }
+            "Restore" {
+                Write-Information "Executing restore operation..." -InformationAction Continue
+                # TODO: Implement restore logic
+                $result.Message = "Restore operation - not yet implemented"
+            }
+            "Merge" {
+                Write-Information "Executing merge operation..." -InformationAction Continue
+                # TODO: Implement merge logic
+                $result.Message = "Merge operation - not yet implemented"
+            }
+        }
+        
+        # Calculate duration
+        $endTime = Get-Date
+        $duration = $endTime - $script:StartTime
+        $result.Duration = $duration.ToString("hh\:mm\:ss")
+        
+        $result.Success = $true
+        $result.Message = "Operation completed successfully (scaffolding version)"
+        
+        Write-Information "Operation completed in $($result.Duration)" -InformationAction Continue
+        
+    } catch {
+        $result.Success = $false
+        $result.Message = "Operation failed: $($_.Exception.Message)"
+        $result.Errors += $_.Exception.Message
+        $result.ErrorCount = 1
+        
+        Write-Error $result.Message
+    }
+    
+    return $result
+}
+
+# Main script execution
+try {
+    Write-Information "Import-OutlookContact v$($script:ApplicationInfo.Version) starting..." -InformationAction Continue
+    
+    # Execute the main operation
+    $operationResult = Invoke-ImportOutlookContact -Mode $Mode -CsvPath $CsvPath -UserEmail $UserEmail -ContactFolder $ContactFolder -DuplicateAction $DuplicateAction -MappingProfile $MappingProfile -BackupEnabled $BackupEnabled -ValidateOnly $ValidateOnly
+    
+    # Output results
+    Write-Information "=== Operation Results ===" -InformationAction Continue
+    Write-Information "Success: $($operationResult.Success)" -InformationAction Continue
+    Write-Information "Message: $($operationResult.Message)" -InformationAction Continue
+    Write-Information "Duration: $($operationResult.Duration)" -InformationAction Continue
+    
+    if ($operationResult.Success) {
+        Write-Information "Import completed successfully!" -InformationAction Continue
+        exit 0
+    } else {
+        Write-Error "Import failed: $($operationResult.Message)"
+        exit 1
+    }
+    
+} catch {
+    Write-Error "Fatal error in Import-OutlookContact: $($_.Exception.Message)"
+    exit 1
+}
