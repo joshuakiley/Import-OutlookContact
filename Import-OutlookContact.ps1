@@ -27,6 +27,9 @@
 .PARAMETER BackupEnabled
     Create backup before operation (default: $true)
     
+.PARAMETER BackupPath
+    Path where backup files will be stored (default: .\backups)
+    
 .PARAMETER ValidateOnly
     Validate file without importing (default: $false)
     
@@ -35,6 +38,12 @@
     
 .EXAMPLE
     pwsh .\Import-OutlookContact.ps1 -Mode BulkAdd -CsvPath ".\vendors.csv" -UserEmail "user@domain.com" -ContactFolder "Vendors" -DuplicateAction "Merge"
+    
+.EXAMPLE
+    pwsh .\Import-OutlookContact.ps1 -Mode Backup -UserEmail "user@domain.com" -BackupPath ".\backups"
+    
+.EXAMPLE
+    pwsh .\Import-OutlookContact.ps1 -Mode Backup -UserEmail "user@domain.com" -ContactFolder "Vendors"
     
 .NOTES
     Version: 1.0.0
@@ -68,6 +77,9 @@ param(
     [bool]$BackupEnabled = $true,
     
     [Parameter(Mandatory = $false)]
+    [string]$BackupPath,
+    
+    [Parameter(Mandatory = $false)]
     [bool]$ValidateOnly = $false
 )
 
@@ -99,6 +111,13 @@ try {
         throw "Authentication module not found: $authModulePath"
     }
     Import-Module $authModulePath -Force -Verbose:$false
+    
+    # Import contact operations module
+    $contactOpsModulePath = Join-Path $PSScriptRoot "modules" "ContactOperations.psm1"
+    if (-not (Test-Path $contactOpsModulePath)) {
+        throw "ContactOperations module not found: $contactOpsModulePath"
+    }
+    Import-Module $contactOpsModulePath -Force -Verbose:$false
     
     Write-Verbose "Application modules imported successfully"
     
@@ -233,8 +252,29 @@ function Invoke-ImportOutlookContact {
             }
             "Backup" {
                 Write-Information "Executing backup operation..." -InformationAction Continue
-                # TODO: Implement backup logic
-                $result.Message = "Backup operation - not yet implemented"
+                
+                # Create backup directory if not specified
+                if (-not $BackupPath) {
+                    $BackupPath = Join-Path $PSScriptRoot "backups"
+                }
+                
+                # Execute backup operation
+                $backupResult = Backup-UserContacts -UserEmail $UserEmail -BackupPath $BackupPath -ContactFolder $ContactFolder
+                
+                if ($backupResult.Success) {
+                    $result.Success = $true
+                    $result.Message = $backupResult.Message
+                    $result.Data = @{
+                        BackupPath = $backupResult.BackupPath
+                        ContactCount = $backupResult.ContactCount
+                        FolderCount = $backupResult.FolderCount
+                        BackupFiles = $backupResult.BackupFiles
+                    }
+                }
+                else {
+                    $result.Success = $false
+                    $result.Message = $backupResult.Message
+                }
             }
             "Restore" {
                 Write-Information "Executing restore operation..." -InformationAction Continue

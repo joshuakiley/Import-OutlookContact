@@ -1,0 +1,114 @@
+[
+  {
+    "Id": "mock-contact-1",
+    "DisplayName": "John Smith",
+    "GivenName": "John",
+    "Surname": "Smith",
+    "MiddleName": "",
+    "CompanyName": "Acme Corporation",
+    "JobTitle": "Senior Developer",
+    "Department": "Engineering",
+    "EmailAddresses": [
+      {
+        "Address": "john.smith@acme.com"
+      }
+    ],
+    "BusinessPhones": [
+      "555-123-4567"
+    ],
+    "HomePhones": [
+      "555-987-6543"
+    ],
+    "MobilePhone": "555-555-1234",
+    "BusinessAddress": {
+      "PostalCode": "90210",
+      "City": "Tech City",
+      "Street": "123 Business Ave",
+      "CountryOrRegion": "United States",
+      "State": "CA"
+    },
+    "HomeAddress": {
+      "PostalCode": "90211",
+      "City": "Hometown",
+      "Street": "456 Home St",
+      "CountryOrRegion": "United States",
+      "State": "CA"
+    },
+    "PersonalNotes": "Key developer for customer portal project",
+    "Birthday": "1985-03-15",
+    "CreatedDateTime": "2024-01-15T10:30:00Z",
+    "LastModifiedDateTime": "2024-12-01T14:22:33Z"
+  },
+  {
+    "Id": "mock-contact-2",
+    "DisplayName": "Sarah Johnson",
+    "GivenName": "Sarah",
+    "Surname": "Johnson",
+    "MiddleName": "Marie",
+    "CompanyName": "TechFlow Solutions",
+    "JobTitle": "Project Manager",
+    "Department": "Operations",
+    "EmailAddresses": [
+      {
+        "Address": "sarah.johnson@techflow.com"
+      }
+    ],
+    "BusinessPhones": [
+      "555-789-0123"
+    ],
+    "HomePhones": [],
+    "MobilePhone": "555-555-5678",
+    "BusinessAddress": {
+      "PostalCode": "94105",
+      "City": "Silicon Valley",
+      "Street": "789 Innovation Dr",
+      "CountryOrRegion": "United States",
+      "State": "CA"
+    },
+    "HomeAddress": null,
+    "PersonalNotes": "Excellent project coordinator, handles client communications",
+    "Birthday": "1990-07-22",
+    "CreatedDateTime": "2024-02-10T09:15:00Z",
+    "LastModifiedDateTime": "2024-11-15T16:45:12Z"
+  },
+  {
+    "Id": "mock-contact-3",
+    "DisplayName": "Michael Chen",
+    "GivenName": "Michael",
+    "Surname": "Chen",
+    "MiddleName": "",
+    "CompanyName": "Global Dynamics",
+    "JobTitle": "Data Analyst",
+    "Department": "Analytics",
+    "EmailAddresses": [
+      {
+        "Address": "m.chen@globaldynamics.com"
+      }
+    ],
+    "BusinessPhones": [
+      "555-456-7890"
+    ],
+    "HomePhones": [
+      "555-654-3210"
+    ],
+    "MobilePhone": "",
+    "BusinessAddress": {
+      "PostalCode": "10001",
+      "City": "Analytics City",
+      "Street": "321 Data Center Blvd",
+      "CountryOrRegion": "United States",
+      "State": "NY"
+    },
+    "HomeAddress": {
+      "PostalCode": "10002",
+      "City": "Data Town",
+      "Street": "654 Analytics Ave",
+      "CountryOrRegion": "United States",
+      "State": "NY"
+    },
+    "PersonalNotes": "Specialist in business intelligence and reporting",
+    "Birthday": "1988-11-08",
+    "CreatedDateTime": "2024-03-05T13:20:00Z",
+    "LastModifiedDateTime": "2024-12-20T11:30:45Z"
+  }
+]

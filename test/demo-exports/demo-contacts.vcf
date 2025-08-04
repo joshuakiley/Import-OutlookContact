@@ -1,0 +1,43 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:John Smith
+N:Smith;John;;;
+EMAIL:john.smith@acme.com
+TEL:555-987-6543
+TEL;TYPE=WORK:555-123-4567
+TEL;TYPE=CELL:555-555-1234
+ORG:Acme Corporation
+TITLE:Senior Developer
+ADR;TYPE=HOME:;;456 Home St;Hometown;CA;90211;United States
+ADR;TYPE=WORK:;;123 Business Ave;Tech City;CA;90210;United States
+NOTE:Key developer for customer portal project
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Sarah Johnson
+N:Johnson;Sarah;Marie;;
+EMAIL:sarah.johnson@techflow.com
+TEL:
+TEL;TYPE=WORK:555-789-0123
+TEL;TYPE=CELL:555-555-5678
+ORG:TechFlow Solutions
+TITLE:Project Manager
+ADR;TYPE=HOME:;;;;;;
+ADR;TYPE=WORK:;;789 Innovation Dr;Silicon Valley;CA;94105;United States
+NOTE:Excellent project coordinator, handles client communications
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Michael Chen
+N:Chen;Michael;;;
+EMAIL:m.chen@globaldynamics.com
+TEL:555-654-3210
+TEL;TYPE=WORK:555-456-7890
+TEL;TYPE=CELL:
+ORG:Global Dynamics
+TITLE:Data Analyst
+ADR;TYPE=HOME:;;654 Analytics Ave;Data Town;NY;10002;United States
+ADR;TYPE=WORK:;;321 Data Center Blvd;Analytics City;NY;10001;United States
+NOTE:Specialist in business intelligence and reporting
+END:VCARD
+

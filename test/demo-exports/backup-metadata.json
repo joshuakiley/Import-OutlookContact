@@ -1,0 +1,41 @@
+{
+  "Version": "1.0.0",
+  "ContactFolder": "All Folders",
+  "BackupFormat": "Multiple",
+  "ContactFolders": [
+    {
+      "DisplayName": "Contacts",
+      "TotalItems": 2,
+      "Id": "folder-1"
+    },
+    {
+      "DisplayName": "Business Contacts",
+      "TotalItems": 1,
+      "Id": "folder-2"
+    }
+  ],
+  "BackupFiles": [
+    {
+      "FolderName": "All",
+      "FileSize": 2968,
+      "FileName": "demo-contacts.json",
+      "ContactCount": 3
+    },
+    {
+      "FolderName": "All",
+      "FileSize": 1145,
+      "FileName": "demo-contacts.vcf",
+      "ContactCount": 3
+    },
+    {
+      "FolderName": "All",
+      "FileSize": 1530,
+      "FileName": "demo-contacts.csv",
+      "ContactCount": 3
+    }
+  ],
+  "BackupDate": "2025-08-04T15:52:33.232Z",
+  "TotalContacts": 3,
+  "IncludePhotos": false,
+  "UserEmail": "demo@example.com"
+}
