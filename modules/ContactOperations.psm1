@@ -614,13 +614,13 @@ function Restore-UserContacts {
         else {
             # Single file restore
             $backupFiles = @(@{
-                FileName     = Split-Path $BackupPath -Leaf
-                FolderName   = "Contacts"
-                ContactCount = 0
-                FileSize     = (Get-Item $BackupPath).Length
-            })
+                    FileName     = Split-Path $BackupPath -Leaf
+                    FolderName   = "Contacts"
+                    ContactCount = 0
+                    FileSize     = (Get-Item $BackupPath).Length
+                })
             $backupMetadata = @{
-                BackupFormat = [System.IO.Path]::GetExtension($BackupPath).TrimStart('.').ToUpper()
+                BackupFormat  = [System.IO.Path]::GetExtension($BackupPath).TrimStart('.').ToUpper()
                 TotalContacts = 0
             }
         }
@@ -658,7 +658,8 @@ function Restore-UserContacts {
                 # Determine full file path
                 $backupFilePath = if ($isDirectory) {
                     Join-Path $BackupPath $backupFile.FileName
-                } else {
+                }
+                else {
                     $BackupPath
                 }
                 
@@ -675,7 +676,7 @@ function Restore-UserContacts {
                     "CSV" {
                         Import-ContactsFromCSV -FilePath $backupFilePath -MappingProfile "Default"
                     }
-                    "vCard" {
+                    { $_ -in @("vCard", "VCF") } {
                         Import-ContactsFromVCard -FilePath $backupFilePath
                     }
                     default {
@@ -784,12 +785,12 @@ function Restore-UserContacts {
             Write-Information "Total contacts in backup: $($restoreResults.TotalContacts)" -InformationAction Continue
             
             return @{
-                Success         = $true
-                Message         = "Validation completed successfully"
-                TotalContacts   = $restoreResults.TotalContacts
-                ValidContacts   = $restoreResults.TotalContacts
-                ProcessedFiles  = $restoreResults.ProcessedFiles
-                ValidationOnly  = $true
+                Success        = $true
+                Message        = "Validation completed successfully"
+                TotalContacts  = $restoreResults.TotalContacts
+                ValidContacts  = $restoreResults.TotalContacts
+                ProcessedFiles = $restoreResults.ProcessedFiles
+                ValidationOnly = $true
             }
         }
         

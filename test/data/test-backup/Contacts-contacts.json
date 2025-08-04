@@ -1,30 +1,30 @@
 [
   {
-    "CompanyName": "Acme Corp",
+    "DisplayName": "Alice Johnson",
+    "BusinessPhones": [
+      "555-0101"
+    ],
     "EmailAddresses": [
       {
         "Address": "alice.johnson@acme.com"
       }
     ],
+    "Source": "Test Backup",
+    "CompanyName": "Acme Corp",
     "GivenName": "Alice",
-    "BusinessPhones": [
-      "555-0101"
-    ],
-    "Surname": "Johnson",
-    "DisplayName": "Alice Johnson",
-    "Source": "Test Backup"
+    "Surname": "Johnson"
   },
   {
-    "CompanyName": "Tech Solutions",
+    "DisplayName": "Bob Wilson",
+    "Source": "Test Backup",
     "EmailAddresses": [
       {
         "Address": "bob.wilson@techsolutions.com"
       }
     ],
-    "GivenName": "Bob",
-    "Surname": "Wilson",
     "MobilePhone": "555-0102",
-    "DisplayName": "Bob Wilson",
-    "Source": "Test Backup"
+    "CompanyName": "Tech Solutions",
+    "GivenName": "Bob",
+    "Surname": "Wilson"
   }
 ]
