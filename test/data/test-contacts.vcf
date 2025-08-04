@@ -1,0 +1,21 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Alice Wilson
+N:Wilson;Alice;;;
+EMAIL:alice.wilson@example.com
+TEL;TYPE=WORK:555-111-2222
+TEL;TYPE=CELL:555-111-3333
+ORG:Example Corp
+TITLE:Senior Analyst
+END:VCARD
+
+BEGIN:VCARD
+VERSION:3.0
+FN:Charlie Brown
+N:Brown;Charlie;;;
+EMAIL:charlie.brown@demo.com
+TEL;TYPE=WORK:555-444-5555
+TEL;TYPE=CELL:555-444-6666
+ORG:Demo Solutions
+TITLE:Project Manager
+END:VCARD

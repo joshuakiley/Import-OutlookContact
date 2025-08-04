@@ -237,8 +237,31 @@ function Invoke-ImportOutlookContact {
         switch ($Mode) {
             "BulkAdd" {
                 Write-Information "Executing bulk add operation..." -InformationAction Continue
-                # TODO: Implement bulk add logic
-                $result.Message = "Bulk add operation - not yet implemented"
+                
+                # Validate required parameters
+                if ([string]::IsNullOrEmpty($CsvPath)) {
+                    throw "CsvPath parameter is required for BulkAdd operation"
+                }
+                
+                # Execute import operation
+                $importResult = Import-UserContacts -UserEmail $UserEmail -ImportFilePath $CsvPath -ContactFolder $ContactFolder -DuplicateAction $DuplicateAction -ValidateOnly $ValidateOnly
+                
+                if ($importResult.Success) {
+                    $result.Success = $true
+                    $result.Message = $importResult.Message
+                    $result.Data = @{
+                        TotalProcessed    = $importResult.TotalProcessed
+                        SuccessCount      = $importResult.SuccessCount
+                        FailureCount      = $importResult.FailureCount
+                        SkippedDuplicates = $importResult.SkippedDuplicates
+                        ImportedContacts  = $importResult.ImportedContacts
+                        Errors            = $importResult.Errors
+                    }
+                }
+                else {
+                    $result.Success = $false
+                    $result.Message = $importResult.Message
+                }
             }
             "OnboardUser" {
                 Write-Information "Executing onboard user operation..." -InformationAction Continue
@@ -265,10 +288,10 @@ function Invoke-ImportOutlookContact {
                     $result.Success = $true
                     $result.Message = $backupResult.Message
                     $result.Data = @{
-                        BackupPath = $backupResult.BackupPath
+                        BackupPath   = $backupResult.BackupPath
                         ContactCount = $backupResult.ContactCount
-                        FolderCount = $backupResult.FolderCount
-                        BackupFiles = $backupResult.BackupFiles
+                        FolderCount  = $backupResult.FolderCount
+                        BackupFiles  = $backupResult.BackupFiles
                     }
                 }
                 else {
