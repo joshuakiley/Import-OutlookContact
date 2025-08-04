@@ -90,10 +90,12 @@ try {
             $config = Initialize-Configuration -Environment "Development"
             if ($config) {
                 Add-TestResult "Configuration Load" "PASS" "Configuration loaded successfully"
-            } else {
+            }
+            else {
                 Add-TestResult "Configuration Load" "FAIL" "Configuration returned null"
             }
-        } catch {
+        }
+        catch {
             Add-TestResult "Configuration Load" "FAIL" "Failed to load configuration: $($_.Exception.Message)"
         }
         
@@ -102,10 +104,12 @@ try {
             $azureConfig = Get-AzureADConfiguration
             if ($azureConfig -and $azureConfig.TenantId -and $azureConfig.ClientId) {
                 Add-TestResult "Azure AD Config" "PASS" "Azure AD configuration valid"
-            } else {
+            }
+            else {
                 Add-TestResult "Azure AD Config" "FAIL" "Azure AD configuration incomplete"
             }
-        } catch {
+        }
+        catch {
             Add-TestResult "Azure AD Config" "FAIL" "Azure AD configuration error: $($_.Exception.Message)"
         }
         
@@ -117,10 +121,12 @@ try {
             
             if ($tenantId -and $clientId -and $redirectUri) {
                 Add-TestResult "Config Values" "PASS" "All required configuration values present"
-            } else {
+            }
+            else {
                 Add-TestResult "Config Values" "FAIL" "Missing required configuration values"
             }
-        } catch {
+        }
+        catch {
             Add-TestResult "Config Values" "FAIL" "Configuration value retrieval failed: $($_.Exception.Message)"
         }
     }
@@ -134,7 +140,8 @@ try {
         $connectionStatus = Test-GraphConnection
         if ($connectionStatus -eq $false) {
             Add-TestResult "Connection Status" "PASS" "No existing connection detected (expected)"
-        } else {
+        }
+        else {
             Add-TestResult "Connection Status" "WARNING" "Unexpected existing connection detected"
         }
         
@@ -142,7 +149,8 @@ try {
         $authContext = Get-AuthenticationContext
         if ($authContext -eq $null) {
             Add-TestResult "Auth Context" "PASS" "No authentication context (expected)"
-        } else {
+        }
+        else {
             Add-TestResult "Auth Context" "WARNING" "Unexpected authentication context found"
         }
     }
@@ -154,6 +162,11 @@ try {
         Write-Information "This will require user interaction..." -InformationAction Continue
         
         try {
+            # Initialize configuration if not already done
+            if (-not $config) {
+                $config = Initialize-Configuration -Environment "Development"
+            }
+            
             $azureConfig = Get-AzureADConfiguration
             
             $authResult = Initialize-GraphAuthentication -TenantId $azureConfig.TenantId -ClientId $azureConfig.ClientId -AuthenticationMethod Interactive
@@ -164,22 +177,26 @@ try {
                 # Test connection after authentication
                 if (Test-GraphConnection) {
                     Add-TestResult "Post-Auth Connection" "PASS" "Connection test successful after authentication"
-                } else {
+                }
+                else {
                     Add-TestResult "Post-Auth Connection" "FAIL" "Connection test failed after authentication"
                 }
                 
                 # Test permission validation
-                $requiredScopes = @("https://graph.microsoft.com/User.Read")
+                $requiredScopes = @("User.Read")
                 if (Test-RequiredPermissions -RequiredScopes $requiredScopes) {
                     Add-TestResult "Permission Test" "PASS" "Required permissions validated"
-                } else {
+                }
+                else {
                     Add-TestResult "Permission Test" "FAIL" "Permission validation failed"
                 }
                 
-            } else {
+            }
+            else {
                 Add-TestResult "Interactive Auth" "FAIL" "Interactive authentication failed"
             }
-        } catch {
+        }
+        catch {
             Add-TestResult "Interactive Auth" "FAIL" "Interactive authentication error: $($_.Exception.Message)"
         }
     }
@@ -190,6 +207,11 @@ try {
         Write-Information "--- Testing Service Principal Authentication ---" -InformationAction Continue
         
         try {
+            # Initialize configuration if not already done
+            if (-not $config) {
+                $config = Initialize-Configuration -Environment "Development"
+            }
+            
             $azureConfig = Get-AzureADConfiguration
             $clientSecret = Get-SecureClientSecret
             
@@ -198,27 +220,33 @@ try {
                 
                 if ($authResult) {
                     Add-TestResult "Service Principal Auth" "PASS" "Service principal authentication successful"
-                } else {
+                }
+                else {
                     Add-TestResult "Service Principal Auth" "FAIL" "Service principal authentication failed"
                 }
-            } else {
+            }
+            else {
                 Add-TestResult "Service Principal Auth" "SKIP" "No client secret available for testing"
             }
-        } catch {
+        }
+        catch {
             Add-TestResult "Service Principal Auth" "FAIL" "Service principal authentication error: $($_.Exception.Message)"
         }
     }
     
-} catch {
+}
+catch {
     Add-TestResult "Test Framework" "FAIL" "Test framework error: $($_.Exception.Message)"
-} finally {
+}
+finally {
     # Cleanup
     try {
         if (Get-MgContext) {
             Write-Verbose "Cleaning up authentication context..."
             Disconnect-GraphAuthentication
         }
-    } catch {
+    }
+    catch {
         Write-Warning "Cleanup error: $($_.Exception.Message)"
     }
 }
@@ -251,7 +279,8 @@ if ($allTestsPassed) {
     }
     
     exit 0
-} else {
+}
+else {
     Write-Error "❌ Some authentication tests failed. Please review the issues above."
     exit 1
 }

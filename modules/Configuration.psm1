@@ -52,7 +52,8 @@ function Initialize-Configuration {
         # Determine configuration file path
         if ([string]::IsNullOrEmpty($ConfigurationPath)) {
             $script:ConfigPath = Join-Path $PSScriptRoot ".." "config" "appsettings.json"
-        } else {
+        }
+        else {
             $script:ConfigPath = $ConfigurationPath
         }
         
@@ -72,7 +73,8 @@ function Initialize-Configuration {
             
             # Merge environment configuration into base configuration
             $script:AppConfig = Merge-Configuration -BaseConfig $baseConfig -OverrideConfig $envConfig
-        } else {
+        }
+        else {
             Write-Verbose "No environment-specific configuration found for: $Environment"
             $script:AppConfig = $baseConfig
         }
@@ -91,7 +93,8 @@ function Initialize-Configuration {
         
         return $script:AppConfig
         
-    } catch {
+    }
+    catch {
         Write-Error "Failed to initialize configuration: $($_.Exception.Message)"
         throw
     }
@@ -140,9 +143,11 @@ function Get-ConfigurationValue {
         foreach ($component in $pathComponents) {
             if ($current -is [hashtable] -and $current.ContainsKey($component)) {
                 $current = $current[$component]
-            } elseif ($current -is [PSCustomObject] -and $current.PSObject.Properties.Name -contains $component) {
+            }
+            elseif ($current -is [PSCustomObject] -and $current.PSObject.Properties.Name -contains $component) {
                 $current = $current.$component
-            } else {
+            }
+            else {
                 Write-Verbose "Configuration path not found: $Path"
                 return $DefaultValue
             }
@@ -150,7 +155,8 @@ function Get-ConfigurationValue {
         
         return $current
         
-    } catch {
+    }
+    catch {
         Write-Warning "Error retrieving configuration value '$Path': $($_.Exception.Message)"
         return $DefaultValue
     }
@@ -207,7 +213,8 @@ function Get-AzureADConfiguration {
             LoadedAt     = Get-Date
         }
         
-    } catch {
+    }
+    catch {
         Write-Error "Failed to get Azure AD configuration: $($_.Exception.Message)"
         throw
     }
@@ -237,7 +244,8 @@ function Get-SecureClientSecret {
             $clientSecret = Get-ConfigurationValue -Path "AzureAD.ClientSecret"
         }
         
-        if ([string]::IsNullOrEmpty($clientSecret)) {
+        # Check if the value is an unexpanded environment variable placeholder
+        if ([string]::IsNullOrEmpty($clientSecret) -or $clientSecret -match '^\$\{[^}]+\}$') {
             Write-Verbose "No client secret found - interactive authentication will be used"
             return $null
         }
@@ -250,7 +258,8 @@ function Get-SecureClientSecret {
         
         return $secureSecret
         
-    } catch {
+    }
+    catch {
         Write-Error "Failed to retrieve client secret: $($_.Exception.Message)"
         return $null
     }
@@ -286,7 +295,8 @@ function Merge-Configuration {
         if ($merged.ContainsKey($key) -and $merged[$key] -is [hashtable] -and $OverrideConfig[$key] -is [hashtable]) {
             # Recursively merge nested hashtables
             $merged[$key] = Merge-Configuration -BaseConfig $merged[$key] -OverrideConfig $OverrideConfig[$key]
-        } else {
+        }
+        else {
             # Override or add the value
             $merged[$key] = $OverrideConfig[$key]
         }
@@ -319,28 +329,31 @@ function Expand-EnvironmentVariables {
         if ($Configuration[$key] -is [hashtable]) {
             # Recursively process nested hashtables
             $expanded[$key] = Expand-EnvironmentVariables -Configuration $Configuration[$key]
-        } elseif ($Configuration[$key] -is [string]) {
+        }
+        elseif ($Configuration[$key] -is [string]) {
             # Expand environment variables in string values
             $value = $Configuration[$key]
             
             # Find all ${VARIABLE_NAME} patterns
             $pattern = '\$\{([^}]+)\}'
-            $matches = [regex]::Matches($value, $pattern)
+            $regexMatches = [regex]::Matches($value, $pattern)
             
-            foreach ($match in $matches) {
+            foreach ($match in $regexMatches) {
                 $envVarName = $match.Groups[1].Value
                 $envVarValue = [Environment]::GetEnvironmentVariable($envVarName)
                 
                 if ($envVarValue) {
                     $value = $value.Replace($match.Value, $envVarValue)
                     Write-Verbose "Expanded environment variable: $envVarName"
-                } else {
+                }
+                else {
                     Write-Verbose "Environment variable not found: $envVarName (keeping placeholder)"
                 }
             }
             
             $expanded[$key] = $value
-        } else {
+        }
+        else {
             # Copy non-string, non-hashtable values as-is
             $expanded[$key] = $Configuration[$key]
         }
@@ -373,9 +386,10 @@ function Test-ProductionConfiguration {
         
         # Check Azure AD configuration
         try {
-            $azureConfig = Get-AzureADConfiguration
+            $null = Get-AzureADConfiguration
             Write-Verbose "✅ Azure AD configuration valid"
-        } catch {
+        }
+        catch {
             $validationErrors += "Azure AD configuration: $($_.Exception.Message)"
         }
         
@@ -403,15 +417,17 @@ function Test-ProductionConfiguration {
         if ($validationErrors.Count -eq 0) {
             Write-Information "✅ Production configuration validation passed" -InformationAction Continue
             return $true
-        } else {
+        }
+        else {
             Write-Warning "❌ Production configuration validation failed:"
-            foreach ($error in $validationErrors) {
-                Write-Warning "  - $error"
+            foreach ($validationIssue in $validationErrors) {
+                Write-Warning "  - $validationIssue"
             }
             return $false
         }
         
-    } catch {
+    }
+    catch {
         Write-Error "Configuration validation failed: $($_.Exception.Message)"
         return $false
     }

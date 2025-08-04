@@ -68,7 +68,7 @@ function Initialize-GraphAuthentication {
         [string]$AuthenticationMethod = "Interactive",
         
         [Parameter(Mandatory = $false)]
-        [string[]]$Scopes = @("https://graph.microsoft.com/Contacts.ReadWrite", "https://graph.microsoft.com/User.Read")
+        [string[]]$Scopes = @("Contacts.ReadWrite", "User.Read")
     )
     
     try {
@@ -114,9 +114,21 @@ function Initialize-GraphAuthentication {
                 }
                 
                 Write-Verbose "Using service principal authentication..."
-                $authParams.Add("ClientSecretCredential", (New-Object System.Management.Automation.PSCredential($ClientId, $ClientSecret)))
                 
-                Connect-MgGraph @authParams -NoWelcome
+                # For service principal auth, use different parameter set
+                $credential = New-Object System.Management.Automation.PSCredential($ClientId, $ClientSecret)
+                Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $credential -NoWelcome
+                
+                # After connecting, check if we have the required scopes
+                $context = Get-MgContext
+                if ($context -and $context.Scopes) {
+                    $currentScopes = $context.Scopes
+                    $missingScopes = $Scopes | Where-Object { $_ -notin $currentScopes }
+                    if ($missingScopes) {
+                        Write-Warning "Connected but missing some requested scopes: $($missingScopes -join ', ')"
+                        Write-Information "Current scopes: $($currentScopes -join ', ')" -InformationAction Continue
+                    }
+                }
             }
             
             "DeviceCode" {
@@ -151,17 +163,18 @@ function Initialize-GraphAuthentication {
         
         # Log authentication event for audit
         Write-AuditLog -EventType "Authentication" -Message "Microsoft Graph authentication successful" -Details @{
-            TenantId     = $TenantId
-            ClientId     = $ClientId
-            Method       = $AuthenticationMethod
-            Account      = $context.Account
-            Scopes       = $context.Scopes
-            ConnectedAt  = Get-Date
+            TenantId    = $TenantId
+            ClientId    = $ClientId
+            Method      = $AuthenticationMethod
+            Account     = $context.Account
+            Scopes      = $context.Scopes
+            ConnectedAt = Get-Date
         }
         
         return $true
         
-    } catch {
+    }
+    catch {
         $errorMessage = "Microsoft Graph authentication failed: $($_.Exception.Message)"
         Write-Error $errorMessage
         
@@ -211,12 +224,14 @@ function Test-GraphConnection {
         Write-Verbose "Testing connection with API call..."
         try {
             $userProfile = Get-MgUser -UserId "me" -ErrorAction Stop -Verbose:$false -Select "id,displayName"
-        } catch {
+        }
+        catch {
             # If Get-MgUser is not available, try a different approach
             if ($_.Exception.Message -like "*not recognized*") {
                 Write-Verbose "Microsoft.Graph.Users module not available, checking basic context only"
                 return $true  # Context exists, assume connection is valid
-            } else {
+            }
+            else {
                 throw
             }
         }
@@ -225,12 +240,14 @@ function Test-GraphConnection {
             Write-Verbose "✅ Microsoft Graph connection is active"
             Write-Verbose "Connected as: $($context.Account)"
             return $true
-        } else {
+        }
+        else {
             Write-Warning "Microsoft Graph connection test failed - no profile returned"
             return $false
         }
         
-    } catch {
+    }
+    catch {
         Write-Warning "Microsoft Graph connection test failed: $($_.Exception.Message)"
         return $false
     }
@@ -328,7 +345,8 @@ function Update-GraphToken {
         Write-Warning "Token refresh failed - re-authentication required"
         return $false
         
-    } catch {
+    }
+    catch {
         Write-Error "Token refresh failed: $($_.Exception.Message)"
         return $false
     }
@@ -354,8 +372,8 @@ function Disconnect-GraphAuthentication {
         # Log disconnection for audit
         if ($script:AuthenticationContext) {
             Write-AuditLog -EventType "Disconnection" -Message "Microsoft Graph disconnection" -Details @{
-                Account      = $script:AuthenticationContext.Account
-                DisconnectedAt = Get-Date
+                Account         = $script:AuthenticationContext.Account
+                DisconnectedAt  = Get-Date
                 SessionDuration = (Get-Date) - $script:AuthenticationContext.ConnectedAt
             }
         }
@@ -373,7 +391,8 @@ function Disconnect-GraphAuthentication {
         
         Write-Information "✅ Disconnected successfully" -InformationAction Continue
         
-    } catch {
+    }
+    catch {
         Write-Error "Error during disconnection: $($_.Exception.Message)"
     }
 }
@@ -410,13 +429,13 @@ function Write-AuditLog {
     try {
         # Create audit log entry
         $auditEntry = @{
-            Timestamp   = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ"
-            EventType   = $EventType
-            Category    = "Authentication"
-            Message     = $Message
-            Details     = $Details
-            Source      = "Import-OutlookContact.Authentication"
-            Version     = "1.0.0"
+            Timestamp = Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ"
+            EventType = $EventType
+            Category  = "Authentication"
+            Message   = $Message
+            Details   = $Details
+            Source    = "Import-OutlookContact.Authentication"
+            Version   = "1.0.0"
         }
         
         # Convert to JSON for logging
@@ -428,7 +447,8 @@ function Write-AuditLog {
         # TODO: Implement secure audit logging to file or SIEM system
         # This should integrate with the monitoring system specified in /docs/Monitoring.md
         
-    } catch {
+    }
+    catch {
         Write-Warning "Failed to write audit log: $($_.Exception.Message)"
     }
 }
@@ -492,7 +512,8 @@ function Test-RequiredPermissions {
         Write-Verbose "✅ All required permissions are available"
         return $true
         
-    } catch {
+    }
+    catch {
         Write-Error "Permission validation failed: $($_.Exception.Message)"
         return $false
     }
