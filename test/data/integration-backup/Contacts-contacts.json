@@ -1,0 +1,18 @@
+[
+  {
+    "ParentFolderId": "Contacts",
+    "DisplayName": "John Smith",
+    "CompanyName": "Tech Corp",
+    "JobTitle": "Software Engineer",
+    "EmailAddress": "john.smith@company.com",
+    "BusinessPhone": "555-0101"
+  },
+  {
+    "ParentFolderId": "Contacts",
+    "DisplayName": "Jane Doe",
+    "CompanyName": "Tech Corp",
+    "JobTitle": "Project Manager",
+    "EmailAddress": "jane.doe@company.com",
+    "BusinessPhone": "555-0201"
+  }
+]

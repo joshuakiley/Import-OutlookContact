@@ -1,13 +1,13 @@
 {
+  "BusinessPhones": [
+    "555-0103"
+  ],
   "Source": "Test Backup",
+  "CompanyName": "Charlie Brown Supplies",
   "EmailAddresses": [
     {
       "Address": "orders@charliebrown.com"
     }
   ],
-  "BusinessPhones": [
-    "555-0103"
-  ],
-  "DisplayName": "Charlie Brown Supplies",
-  "CompanyName": "Charlie Brown Supplies"
+  "DisplayName": "Charlie Brown Supplies"
 }
