@@ -73,9 +73,9 @@ param(
 
 # Script metadata
 $script:ApplicationInfo = @{
-    Name = "Import-OutlookContact"
-    Version = "1.0.0"
-    Author = "Import-OutlookContact Team"
+    Name      = "Import-OutlookContact"
+    Version   = "1.0.0"
+    Author    = "Import-OutlookContact Team"
     Copyright = "© 2025 Import-OutlookContact Team"
 }
 
@@ -84,36 +84,38 @@ $script:StartTime = Get-Date
 
 # Import required modules and configuration
 try {
-    Write-Verbose "Loading application configuration..."
+    Write-Verbose "Loading application modules..."
     
-    # Load configuration
-    $configPath = Join-Path $PSScriptRoot "config" "appsettings.json"
-    if (-not (Test-Path $configPath)) {
-        throw "Configuration file not found: $configPath"
+    # Import configuration module
+    $configModulePath = Join-Path $PSScriptRoot "modules" "Configuration.psm1"
+    if (-not (Test-Path $configModulePath)) {
+        throw "Configuration module not found: $configModulePath"
     }
+    Import-Module $configModulePath -Force -Verbose:$false
     
-    $script:Config = Get-Content $configPath | ConvertFrom-Json
-    Write-Verbose "Configuration loaded successfully"
-    
-    # Load environment-specific overrides
-    $envConfigPath = Join-Path $PSScriptRoot "config" "appsettings.$($script:Config.Application.Environment.ToLower()).json"
-    if (Test-Path $envConfigPath) {
-        $envConfig = Get-Content $envConfigPath | ConvertFrom-Json
-        Write-Verbose "Environment configuration loaded: $($script:Config.Application.Environment)"
+    # Import authentication module
+    $authModulePath = Join-Path $PSScriptRoot "modules" "Authentication.psm1"
+    if (-not (Test-Path $authModulePath)) {
+        throw "Authentication module not found: $authModulePath"
     }
+    Import-Module $authModulePath -Force -Verbose:$false
     
-    # Import core modules
-    Write-Verbose "Importing required PowerShell modules..."
+    Write-Verbose "Application modules imported successfully"
+    
+    # Initialize configuration
+    $environment = if ($env:ENVIRONMENT) { $env:ENVIRONMENT } else { "Development" }
+    $script:Config = Initialize-Configuration -Environment $environment
+    Write-Verbose "Configuration initialized for environment: $environment"
     
     # Check if Microsoft.Graph is available
     if (-not (Get-Module -ListAvailable -Name "Microsoft.Graph")) {
         throw "Microsoft.Graph module is required. Install with: Install-Module Microsoft.Graph -Scope CurrentUser"
     }
     
-    Import-Module Microsoft.Graph -Force -Verbose:$false
-    Write-Verbose "Microsoft.Graph module imported successfully"
+    Write-Verbose "Prerequisites validated successfully"
     
-} catch {
+}
+catch {
     Write-Error "Failed to initialize application: $($_.Exception.Message)"
     exit 1
 }
@@ -134,15 +136,15 @@ function Invoke-ImportOutlookContact {
     
     # Initialize result object
     $result = @{
-        Success = $false
-        Message = ""
-        ImportedCount = 0
-        SkippedCount = 0
-        ErrorCount = 0
+        Success         = $false
+        Message         = ""
+        ImportedCount   = 0
+        SkippedCount    = 0
+        ErrorCount      = 0
         DuplicatesFound = 0
-        BackupPath = ""
-        Duration = ""
-        Errors = @()
+        BackupPath      = ""
+        Duration        = ""
+        Errors          = @()
     }
     
     try {
@@ -169,14 +171,47 @@ function Invoke-ImportOutlookContact {
         Write-Information "Parameters validated successfully" -InformationAction Continue
         
         # Authenticate with Microsoft Graph
-        Write-Verbose "Authenticating with Microsoft Graph..."
+        Write-Information "Establishing Microsoft Graph connection..." -InformationAction Continue
         try {
-            # TODO: Implement authentication logic based on config
-            # This will be implemented in the next step
-            Write-Warning "Authentication not yet implemented - this is a scaffolding version"
+            # Get Azure AD configuration
+            $azureConfig = Get-AzureADConfiguration
+            $clientSecret = Get-SecureClientSecret
             
-        } catch {
-            throw "Authentication failed: $($_.Exception.Message)"
+            # Determine authentication method based on available credentials
+            $authMethod = if ($clientSecret) { "ServicePrincipal" } else { "Interactive" }
+            
+            Write-Verbose "Using authentication method: $authMethod"
+            
+            # Initialize Graph authentication
+            $authParams = @{
+                TenantId             = $azureConfig.TenantId
+                ClientId             = $azureConfig.ClientId
+                AuthenticationMethod = $authMethod
+            }
+            
+            if ($clientSecret) {
+                $authParams.ClientSecret = $clientSecret
+            }
+            
+            $authSuccess = Initialize-GraphAuthentication @authParams
+            
+            if (-not $authSuccess) {
+                throw "Microsoft Graph authentication failed"
+            }
+            
+            # Validate required permissions
+            $requiredScopes = @("https://graph.microsoft.com/Contacts.ReadWrite", "https://graph.microsoft.com/User.Read")
+            if (-not (Test-RequiredPermissions -RequiredScopes $requiredScopes)) {
+                throw "Insufficient permissions. Required: $($requiredScopes -join ', ')"
+            }
+            
+            Write-Information "✅ Microsoft Graph authentication successful" -InformationAction Continue
+            
+        }
+        catch {
+            $errorMessage = "Microsoft Graph authentication failed: $($_.Exception.Message)"
+            Write-Error $errorMessage
+            throw $errorMessage
         }
         
         # Execute the requested operation
@@ -223,7 +258,8 @@ function Invoke-ImportOutlookContact {
         
         Write-Information "Operation completed in $($result.Duration)" -InformationAction Continue
         
-    } catch {
+    }
+    catch {
         $result.Success = $false
         $result.Message = "Operation failed: $($_.Exception.Message)"
         $result.Errors += $_.Exception.Message
@@ -250,13 +286,30 @@ try {
     
     if ($operationResult.Success) {
         Write-Information "Import completed successfully!" -InformationAction Continue
-        exit 0
-    } else {
+        $exitCode = 0
+    }
+    else {
         Write-Error "Import failed: $($operationResult.Message)"
-        exit 1
+        $exitCode = 1
     }
     
-} catch {
-    Write-Error "Fatal error in Import-OutlookContact: $($_.Exception.Message)"
-    exit 1
 }
+catch {
+    Write-Error "Fatal error in Import-OutlookContact: $($_.Exception.Message)"
+    $exitCode = 1
+}
+finally {
+    # Cleanup: Disconnect from Microsoft Graph
+    try {
+        if (Get-MgContext) {
+            Write-Verbose "Disconnecting from Microsoft Graph..."
+            Disconnect-GraphAuthentication
+        }
+    }
+    catch {
+        Write-Warning "Error during cleanup: $($_.Exception.Message)"
+    }
+}
+
+# Exit with appropriate code
+exit $exitCode

@@ -27,7 +27,8 @@ Write-Information "Checking PowerShell version..." -InformationAction Continue
 if ($PSVersionTable.PSVersion.Major -ge 7) {
     $testResults += @{ Test = "PowerShell Version"; Status = "PASS"; Message = "PowerShell $($PSVersionTable.PSVersion) detected" }
     Write-Information "✅ PowerShell version: $($PSVersionTable.PSVersion)" -InformationAction Continue
-} else {
+}
+else {
     $testResults += @{ Test = "PowerShell Version"; Status = "FAIL"; Message = "PowerShell 7.0+ required, found $($PSVersionTable.PSVersion)" }
     Write-Warning "❌ PowerShell version: $($PSVersionTable.PSVersion) (7.0+ required)"
     $allTestsPassed = $false
@@ -41,12 +42,14 @@ if (Test-Path $configPath) {
         $config = Get-Content $configPath | ConvertFrom-Json
         $testResults += @{ Test = "Configuration File"; Status = "PASS"; Message = "Configuration loaded successfully" }
         Write-Information "✅ Configuration file: Found and valid" -InformationAction Continue
-    } catch {
+    }
+    catch {
         $testResults += @{ Test = "Configuration File"; Status = "FAIL"; Message = "Configuration file invalid: $($_.Exception.Message)" }
         Write-Warning "❌ Configuration file: Invalid JSON format"
         $allTestsPassed = $false
     }
-} else {
+}
+else {
     $testResults += @{ Test = "Configuration File"; Status = "FAIL"; Message = "Configuration file not found: $configPath" }
     Write-Warning "❌ Configuration file: Not found at $configPath"
     $allTestsPassed = $false
@@ -58,7 +61,8 @@ $graphModule = Get-Module -ListAvailable -Name "Microsoft.Graph"
 if ($graphModule) {
     $testResults += @{ Test = "Microsoft.Graph Module"; Status = "PASS"; Message = "Version $($graphModule[0].Version) available" }
     Write-Information "✅ Microsoft.Graph module: Version $($graphModule[0].Version)" -InformationAction Continue
-} else {
+}
+else {
     $testResults += @{ Test = "Microsoft.Graph Module"; Status = "FAIL"; Message = "Module not installed" }
     Write-Warning "❌ Microsoft.Graph module: Not installed"
     Write-Information "   Install with: Install-Module Microsoft.Graph -Scope CurrentUser" -InformationAction Continue
@@ -71,7 +75,8 @@ $udModule = Get-Module -ListAvailable -Name "UniversalDashboard*"
 if ($udModule) {
     $testResults += @{ Test = "UniversalDashboard Module"; Status = "PASS"; Message = "Version $($udModule[0].Version) available" }
     Write-Information "✅ UniversalDashboard module: Version $($udModule[0].Version)" -InformationAction Continue
-} else {
+}
+else {
     $testResults += @{ Test = "UniversalDashboard Module"; Status = "WARNING"; Message = "Module not installed (web interface unavailable)" }
     Write-Warning "⚠️  UniversalDashboard module: Not installed (web interface will be unavailable)"
     Write-Information "   Install with: Install-Module UniversalDashboard.Community -Scope CurrentUser" -InformationAction Continue
@@ -83,7 +88,8 @@ $mainScriptPath = Join-Path $PSScriptRoot ".." "Import-OutlookContact.ps1"
 if (Test-Path $mainScriptPath) {
     $testResults += @{ Test = "Main Script"; Status = "PASS"; Message = "Import-OutlookContact.ps1 found" }
     Write-Information "✅ Main script: Found at $mainScriptPath" -InformationAction Continue
-} else {
+}
+else {
     $testResults += @{ Test = "Main Script"; Status = "FAIL"; Message = "Import-OutlookContact.ps1 not found" }
     Write-Warning "❌ Main script: Not found at $mainScriptPath"
     $allTestsPassed = $false
@@ -95,7 +101,8 @@ $serviceScriptPath = Join-Path $PSScriptRoot ".." "Start-ImportOutlookContact.ps
 if (Test-Path $serviceScriptPath) {
     $testResults += @{ Test = "Service Script"; Status = "PASS"; Message = "Start-ImportOutlookContact.ps1 found" }
     Write-Information "✅ Service script: Found at $serviceScriptPath" -InformationAction Continue
-} else {
+}
+else {
     $testResults += @{ Test = "Service Script"; Status = "FAIL"; Message = "Start-ImportOutlookContact.ps1 not found" }
     Write-Warning "❌ Service script: Not found at $serviceScriptPath"
     $allTestsPassed = $false
@@ -116,7 +123,8 @@ foreach ($dir in $requiredDirs) {
 if ($missingDirs.Count -eq 0) {
     $testResults += @{ Test = "Directory Structure"; Status = "PASS"; Message = "All required directories present" }
     Write-Information "✅ Directory structure: Complete" -InformationAction Continue
-} else {
+}
+else {
     $testResults += @{ Test = "Directory Structure"; Status = "FAIL"; Message = "Missing directories: $($missingDirs -join ', ')" }
     Write-Warning "❌ Directory structure: Missing directories: $($missingDirs -join ', ')"
     $allTestsPassed = $false
@@ -145,7 +153,8 @@ if ($allTestsPassed) {
     Write-Information "2. Set environment variables (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET)" -InformationAction Continue
     Write-Information "3. Run: pwsh .\Start-ImportOutlookContact.ps1 -Mode Development" -InformationAction Continue
     exit 0
-} else {
+}
+else {
     Write-Error "❌ Some prerequisites are not met. Please address the issues above before proceeding."
     exit 1
 }

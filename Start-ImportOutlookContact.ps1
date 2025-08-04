@@ -52,9 +52,9 @@ param(
 
 # Script metadata
 $script:ApplicationInfo = @{
-    Name = "Import-OutlookContact Service"
+    Name    = "Import-OutlookContact Service"
     Version = "1.0.0"
-    Author = "Import-OutlookContact Team"
+    Author  = "Import-OutlookContact Team"
 }
 
 # Initialize logging
@@ -69,7 +69,8 @@ try {
     # Determine configuration file path
     if ([string]::IsNullOrEmpty($ConfigPath)) {
         $configPath = Join-Path $PSScriptRoot "config" "appsettings.json"
-    } else {
+    }
+    else {
         $configPath = $ConfigPath
     }
     
@@ -92,7 +93,8 @@ try {
     
     Write-Information "Configuration loaded successfully" -InformationAction Continue
     
-} catch {
+}
+catch {
     Write-Error "Failed to load configuration: $($_.Exception.Message)"
     exit 1
 }
@@ -107,7 +109,8 @@ try {
         Import-Module $udModule.Name -Force -Verbose:$false
         Write-Verbose "Universal Dashboard module imported: $($udModule.Name)"
         $script:WebInterfaceAvailable = $true
-    } else {
+    }
+    else {
         Write-Warning "Universal Dashboard module not found. Web interface will not be available."
         Write-Information "Install with: Install-Module UniversalDashboard.Community -Scope CurrentUser" -InformationAction Continue
         $script:WebInterfaceAvailable = $false
@@ -117,12 +120,14 @@ try {
     if (Get-Module -ListAvailable -Name "Microsoft.Graph") {
         Import-Module Microsoft.Graph -Force -Verbose:$false
         Write-Verbose "Microsoft.Graph module imported"
-    } else {
+    }
+    else {
         Write-Warning "Microsoft.Graph module not found. Core functionality will be limited."
         Write-Information "Install with: Install-Module Microsoft.Graph -Scope CurrentUser" -InformationAction Continue
     }
     
-} catch {
+}
+catch {
     Write-Error "Failed to import modules: $($_.Exception.Message)"
     exit 1
 }
@@ -157,7 +162,8 @@ function Start-WebInterface {
             Write-Verbose "Service heartbeat - $(Get-Date)"
         }
         
-    } catch {
+    }
+    catch {
         Write-Error "Failed to start web interface: $($_.Exception.Message)"
         throw
     }
@@ -249,7 +255,8 @@ try {
             Write-Information "Starting in Development mode..." -InformationAction Continue
             if ($script:WebInterfaceAvailable) {
                 Start-WebInterface -Port $Port -Mode $Mode
-            } else {
+            }
+            else {
                 Start-ConsoleMode
             }
         }
@@ -264,7 +271,8 @@ try {
         }
     }
     
-} catch {
+}
+catch {
     Write-Error "Failed to start Import-OutlookContact service: $($_.Exception.Message)"
     exit 1
 }
