@@ -520,6 +520,379 @@ function Export-ContactsToCSV {
 
 <#
 .SYNOPSIS
+    Restore contacts from backup files
+    
+.DESCRIPTION
+    Restores contacts from Import-OutlookContact backup files with folder structure preservation,
+    selective restore options, and conflict resolution.
+    
+.PARAMETER UserEmail
+    Target user's email address
+    
+.PARAMETER BackupPath
+    Path to backup directory or specific backup file
+    
+.PARAMETER RestoreFolder
+    Specific folder to restore (default: all folders)
+    
+.PARAMETER ConflictAction
+    How to handle existing contacts: Skip, Merge, Overwrite (default: Skip)
+    
+.PARAMETER PreserveStructure
+    Preserve original folder structure (default: true)
+    
+.PARAMETER ValidateOnly
+    Only validate backup without restoring (default: false)
+    
+.EXAMPLE
+    Restore-UserContacts -UserEmail "user@domain.com" -BackupPath ".\backups\user_domain_com_20241201-143022"
+    
+.EXAMPLE
+    Restore-UserContacts -UserEmail "user@domain.com" -BackupPath ".\backups\user_domain_com_20241201-143022" -RestoreFolder "Vendors" -ConflictAction "Merge"
+#>
+function Restore-UserContacts {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserEmail,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$BackupPath,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$RestoreFolder = "",
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Skip", "Merge", "Overwrite")]
+        [string]$ConflictAction = "Skip",
+        
+        [Parameter(Mandatory = $false)]
+        [bool]$PreserveStructure = $true,
+        
+        [Parameter(Mandatory = $false)]
+        [bool]$ValidateOnly = $false
+    )
+    
+    try {
+        Write-Information "Starting restore operation for user: $UserEmail" -InformationAction Continue
+        Write-Information "Backup source: $BackupPath" -InformationAction Continue
+        Write-Information "Conflict action: $ConflictAction" -InformationAction Continue
+        
+        # Validate backup path exists
+        if (-not (Test-Path $BackupPath)) {
+            throw "Backup path not found: $BackupPath"
+        }
+        
+        # Determine if BackupPath is a directory or file
+        $isDirectory = (Get-Item $BackupPath).PSIsContainer
+        
+        if ($isDirectory) {
+            # Look for backup metadata
+            $metadataPath = Join-Path $BackupPath "backup-metadata.json"
+            if (-not (Test-Path $metadataPath)) {
+                throw "Backup metadata not found. This may not be a valid Import-OutlookContact backup directory."
+            }
+            
+            # Load backup metadata
+            $backupMetadata = Get-Content $metadataPath -Encoding UTF8 | ConvertFrom-Json
+            Write-Information "Found backup from: $($backupMetadata.BackupDate)" -InformationAction Continue
+            Write-Information "Original format: $($backupMetadata.BackupFormat)" -InformationAction Continue
+            Write-Information "Total contacts in backup: $($backupMetadata.TotalContacts)" -InformationAction Continue
+            
+            # Get backup files
+            $backupFiles = $backupMetadata.BackupFiles
+            
+            # Filter by specific folder if requested
+            if (-not [string]::IsNullOrEmpty($RestoreFolder)) {
+                $backupFiles = $backupFiles | Where-Object { $_.FolderName -eq $RestoreFolder }
+                if ($backupFiles.Count -eq 0) {
+                    throw "Folder '$RestoreFolder' not found in backup"
+                }
+                Write-Information "Restoring specific folder: $RestoreFolder" -InformationAction Continue
+            }
+        }
+        else {
+            # Single file restore
+            $backupFiles = @(@{
+                FileName     = Split-Path $BackupPath -Leaf
+                FolderName   = "Contacts"
+                ContactCount = 0
+                FileSize     = (Get-Item $BackupPath).Length
+            })
+            $backupMetadata = @{
+                BackupFormat = [System.IO.Path]::GetExtension($BackupPath).TrimStart('.').ToUpper()
+                TotalContacts = 0
+            }
+        }
+        
+        # Validate authentication if not validation-only
+        if (-not $ValidateOnly) {
+            if (-not (Test-GraphConnection)) {
+                throw "Microsoft Graph connection is not available. Please authenticate first."
+            }
+            
+            # Validate required permissions
+            if (-not (Test-RequiredPermissions -RequiredScopes @("Contacts.ReadWrite", "User.Read"))) {
+                throw "Insufficient permissions for restore operation"
+            }
+        }
+        
+        Write-Information "Processing $($backupFiles.Count) backup files..." -InformationAction Continue
+        
+        $restoreResults = @{
+            ProcessedFiles   = 0
+            TotalContacts    = 0
+            SuccessCount     = 0
+            FailureCount     = 0
+            SkippedCount     = 0
+            CreatedFolders   = @()
+            RestoredContacts = @()
+            Errors           = @()
+        }
+        
+        # Process each backup file
+        foreach ($backupFile in $backupFiles) {
+            try {
+                Write-Information "Processing: $($backupFile.FileName) ($($backupFile.ContactCount) contacts)" -InformationAction Continue
+                
+                # Determine full file path
+                $backupFilePath = if ($isDirectory) {
+                    Join-Path $BackupPath $backupFile.FileName
+                } else {
+                    $BackupPath
+                }
+                
+                if (-not (Test-Path $backupFilePath)) {
+                    Write-Warning "Backup file not found: $backupFilePath"
+                    continue
+                }
+                
+                # Load contacts from backup file
+                $contacts = switch ($backupMetadata.BackupFormat) {
+                    "JSON" {
+                        Get-Content $backupFilePath -Encoding UTF8 | ConvertFrom-Json
+                    }
+                    "CSV" {
+                        Import-ContactsFromCSV -FilePath $backupFilePath -MappingProfile "Default"
+                    }
+                    "vCard" {
+                        Import-ContactsFromVCard -FilePath $backupFilePath
+                    }
+                    default {
+                        throw "Unsupported backup format: $($backupMetadata.BackupFormat)"
+                    }
+                }
+                
+                if (-not $contacts -or $contacts.Count -eq 0) {
+                    Write-Warning "No contacts found in backup file: $($backupFile.FileName)"
+                    continue
+                }
+                
+                $restoreResults.TotalContacts += $contacts.Count
+                
+                # Validate contacts
+                $validationResult = Test-ContactsValidation -Contacts $contacts
+                Write-Information "Validation: $($validationResult.ValidCount) valid, $($validationResult.InvalidCount) invalid" -InformationAction Continue
+                
+                if ($ValidateOnly) {
+                    continue
+                }
+                
+                # Determine target folder
+                $targetFolderName = if ($PreserveStructure) { $backupFile.FolderName } else { "Contacts" }
+                
+                # Get or create target folder
+                $targetFolder = Get-OrCreateContactFolder -UserEmail $UserEmail -FolderName $targetFolderName
+                
+                if ($targetFolder.Id -notin $restoreResults.CreatedFolders) {
+                    $restoreResults.CreatedFolders += $targetFolder.Id
+                    Write-Information "Using folder: $targetFolderName" -InformationAction Continue
+                }
+                
+                # Handle conflicts if requested
+                $contactsToRestore = $validationResult.ValidContacts
+                if ($ConflictAction -ne "Overwrite") {
+                    $conflictResult = Find-DuplicateContacts -UserEmail $UserEmail -FolderId $targetFolder.Id -NewContacts $contactsToRestore
+                    
+                    if ($conflictResult.DuplicateCount -gt 0) {
+                        Write-Information "Found $($conflictResult.DuplicateCount) potential conflicts" -InformationAction Continue
+                        
+                        $contactsToRestore = switch ($ConflictAction) {
+                            "Skip" {
+                                Write-Information "Skipping $($conflictResult.DuplicateCount) conflicting contacts" -InformationAction Continue
+                                $restoreResults.SkippedCount += $conflictResult.DuplicateCount
+                                $conflictResult.UniqueContacts
+                            }
+                            "Merge" {
+                                Write-Information "Merging $($conflictResult.DuplicateCount) conflicting contacts" -InformationAction Continue
+                                # For restore, merge means update existing with backup data
+                                foreach ($existingContact in $conflictResult.ExistingContacts) {
+                                    $matchingBackupContact = $conflictResult.DuplicateContacts | Where-Object { 
+                                        $_.EmailAddresses[0].Address -eq $existingContact.EmailAddresses[0].Address 
+                                    } | Select-Object -First 1
+                                    
+                                    if ($matchingBackupContact) {
+                                        # Update existing contact with backup data
+                                        Update-ExistingContact -UserEmail $UserEmail -ExistingContactId $existingContact.Id -BackupContact $matchingBackupContact
+                                        $restoreResults.SuccessCount++
+                                    }
+                                }
+                                $conflictResult.UniqueContacts
+                            }
+                        }
+                    }
+                }
+                
+                # Restore contacts
+                foreach ($contact in $contactsToRestore) {
+                    try {
+                        $graphContact = Convert-ToGraphContact -Contact $contact
+                        $createdContact = Add-ContactToFolder -UserEmail $UserEmail -FolderId $targetFolder.Id -Contact $graphContact
+                        
+                        $restoreResults.SuccessCount++
+                        $restoreResults.RestoredContacts += $createdContact
+                        
+                        Write-Verbose "✅ Restored: $($contact.DisplayName)"
+                    }
+                    catch {
+                        $restoreResults.FailureCount++
+                        $restoreResults.Errors += @{
+                            Contact = $contact.DisplayName
+                            Error   = $_.Exception.Message
+                            File    = $backupFile.FileName
+                        }
+                        Write-Warning "❌ Failed to restore: $($contact.DisplayName) - $($_.Exception.Message)"
+                    }
+                }
+                
+                $restoreResults.ProcessedFiles++
+                
+            }
+            catch {
+                Write-Error "Failed to process backup file '$($backupFile.FileName)': $($_.Exception.Message)"
+                $restoreResults.Errors += @{
+                    File  = $backupFile.FileName
+                    Error = $_.Exception.Message
+                }
+                continue
+            }
+        }
+        
+        if ($ValidateOnly) {
+            Write-Information "" -InformationAction Continue
+            Write-Information "🔍 Validation completed!" -InformationAction Continue
+            Write-Information "Total contacts in backup: $($restoreResults.TotalContacts)" -InformationAction Continue
+            
+            return @{
+                Success         = $true
+                Message         = "Validation completed successfully"
+                TotalContacts   = $restoreResults.TotalContacts
+                ValidContacts   = $restoreResults.TotalContacts
+                ProcessedFiles  = $restoreResults.ProcessedFiles
+                ValidationOnly  = $true
+            }
+        }
+        
+        Write-Information "" -InformationAction Continue
+        Write-Information "🎉 Restore completed!" -InformationAction Continue
+        Write-Information "Files processed: $($restoreResults.ProcessedFiles)" -InformationAction Continue
+        Write-Information "Successfully restored: $($restoreResults.SuccessCount) contacts" -InformationAction Continue
+        if ($restoreResults.SkippedCount -gt 0) {
+            Write-Information "Skipped conflicts: $($restoreResults.SkippedCount) contacts" -InformationAction Continue
+        }
+        if ($restoreResults.FailureCount -gt 0) {
+            Write-Information "Failed restores: $($restoreResults.FailureCount) contacts" -InformationAction Continue
+        }
+        
+        return @{
+            Success          = $true
+            Message          = "Restore completed successfully"
+            ProcessedFiles   = $restoreResults.ProcessedFiles
+            TotalContacts    = $restoreResults.TotalContacts
+            SuccessCount     = $restoreResults.SuccessCount
+            FailureCount     = $restoreResults.FailureCount
+            SkippedCount     = $restoreResults.SkippedCount
+            CreatedFolders   = $restoreResults.CreatedFolders.Count
+            RestoredContacts = $restoreResults.RestoredContacts
+            Errors           = $restoreResults.Errors
+        }
+        
+    }
+    catch {
+        $errorMessage = "Restore operation failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        
+        return @{
+            Success        = $false
+            Message        = $errorMessage
+            ProcessedFiles = 0
+            SuccessCount   = 0
+            FailureCount   = 0
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Update existing contact with backup data
+    
+.DESCRIPTION
+    Updates an existing Microsoft Graph contact with data from backup.
+    
+.PARAMETER UserEmail
+    Target user's email address
+    
+.PARAMETER ExistingContactId
+    ID of existing contact to update
+    
+.PARAMETER BackupContact
+    Contact data from backup to merge
+    
+.EXAMPLE
+    Update-ExistingContact -UserEmail "user@domain.com" -ExistingContactId "contact-id" -BackupContact $backupContact
+#>
+function Update-ExistingContact {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserEmail,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ExistingContactId,
+        
+        [Parameter(Mandatory = $true)]
+        [PSObject]$BackupContact
+    )
+    
+    try {
+        Write-Verbose "Updating existing contact: $($BackupContact.DisplayName)"
+        
+        # Convert backup contact to Graph format
+        $updateData = Convert-ToGraphContact -Contact $BackupContact
+        
+        if (Get-Module -ListAvailable -Name "Microsoft.Graph.PersonalContacts") {
+            Import-Module Microsoft.Graph.PersonalContacts -Force -Verbose:$false
+            
+            # Update contact using Graph SDK
+            Update-MgUserContact -UserId $UserEmail -ContactId $ExistingContactId -BodyParameter $updateData
+        }
+        else {
+            # Use REST API
+            $uri = "https://graph.microsoft.com/v1.0/users/$UserEmail/contacts/$ExistingContactId"
+            $body = $updateData | ConvertTo-Json -Depth 10
+            Invoke-MgGraphRequest -Uri $uri -Method PATCH -Body $body
+        }
+        
+        Write-Verbose "✅ Updated contact: $($BackupContact.DisplayName)"
+    }
+    catch {
+        Write-Error "Failed to update existing contact: $($_.Exception.Message)"
+        throw
+    }
+}
+
+<#
+.SYNOPSIS
     Import contacts from CSV or vCard file
     
 .DESCRIPTION
@@ -1431,6 +1804,7 @@ function Add-ContactToFolder {
 # Export module functions
 Export-ModuleMember -Function @(
     'Backup-UserContacts',
+    'Restore-UserContacts',
     'Import-UserContacts',
     'Get-UserContactFolders', 
     'Get-ContactsFromFolder',
@@ -1445,5 +1819,6 @@ Export-ModuleMember -Function @(
     'Get-OrCreateContactFolder',
     'Find-DuplicateContacts',
     'Convert-ToGraphContact',
-    'Add-ContactToFolder'
+    'Add-ContactToFolder',
+    'Update-ExistingContact'
 )

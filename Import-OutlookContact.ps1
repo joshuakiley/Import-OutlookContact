@@ -45,6 +45,12 @@
 .EXAMPLE
     pwsh .\Import-OutlookContact.ps1 -Mode Backup -UserEmail "user@domain.com" -ContactFolder "Vendors"
     
+.EXAMPLE
+    pwsh .\Import-OutlookContact.ps1 -Mode Restore -CsvPath ".\backups\user_domain_com_20241201-143022" -UserEmail "user@domain.com"
+    
+.EXAMPLE
+    pwsh .\Import-OutlookContact.ps1 -Mode Restore -CsvPath ".\backups\vendors-contacts.json" -UserEmail "user@domain.com" -ContactFolder "Vendors" -DuplicateAction "Merge"
+    
 .NOTES
     Version: 1.0.0
     Author: Import-OutlookContact Team
@@ -172,14 +178,16 @@ function Invoke-ImportOutlookContact {
         Write-Information "User: $UserEmail" -InformationAction Continue
         Write-Information "Contact Folder: $ContactFolder" -InformationAction Continue
         
-        # Validate required parameters for import modes
-        if ($Mode -in @("BulkAdd", "OnboardUser") -and [string]::IsNullOrEmpty($CsvPath)) {
-            throw "CsvPath parameter is required for import operations"
+        # Validate required parameters for import and restore modes
+        if ($Mode -in @("BulkAdd", "OnboardUser", "Restore") -and [string]::IsNullOrEmpty($CsvPath)) {
+            $paramName = if ($Mode -eq "Restore") { "BackupPath (via CsvPath parameter)" } else { "CsvPath parameter" }
+            throw "$paramName is required for $Mode operations"
         }
         
-        # Validate file exists for import modes
-        if ($Mode -in @("BulkAdd", "OnboardUser") -and -not (Test-Path $CsvPath)) {
-            throw "Import file not found: $CsvPath"
+        # Validate file exists for import and restore modes
+        if ($Mode -in @("BulkAdd", "OnboardUser", "Restore") -and -not (Test-Path $CsvPath)) {
+            $pathType = if ($Mode -eq "Restore") { "Backup path" } else { "Import file" }
+            throw "$pathType not found: $CsvPath"
         }
         
         # Validate user email format
@@ -301,8 +309,38 @@ function Invoke-ImportOutlookContact {
             }
             "Restore" {
                 Write-Information "Executing restore operation..." -InformationAction Continue
-                # TODO: Implement restore logic
-                $result.Message = "Restore operation - not yet implemented"
+                
+                # For restore, CsvPath parameter is used as BackupPath
+                if ([string]::IsNullOrEmpty($CsvPath)) {
+                    throw "BackupPath (via CsvPath parameter) is required for restore operation"
+                }
+                
+                if (-not (Test-Path $CsvPath)) {
+                    throw "Backup path not found: $CsvPath"
+                }
+                
+                # Execute restore operation
+                $restoreResult = Restore-UserContacts -UserEmail $UserEmail -BackupPath $CsvPath -RestoreFolder $ContactFolder -ConflictAction $DuplicateAction -ValidateOnly $ValidateOnly
+                
+                if ($restoreResult.Success) {
+                    $result.Success = $true
+                    $result.Message = $restoreResult.Message
+                    $result.Data = @{
+                        ProcessedFiles   = $restoreResult.ProcessedFiles
+                        TotalContacts    = $restoreResult.TotalContacts
+                        SuccessCount     = $restoreResult.SuccessCount
+                        FailureCount     = $restoreResult.FailureCount
+                        SkippedCount     = $restoreResult.SkippedCount
+                        CreatedFolders   = $restoreResult.CreatedFolders
+                        RestoredContacts = $restoreResult.RestoredContacts
+                        Errors           = $restoreResult.Errors
+                        ValidationOnly   = $restoreResult.ValidationOnly
+                    }
+                }
+                else {
+                    $result.Success = $false
+                    $result.Message = $restoreResult.Message
+                }
             }
             "Merge" {
                 Write-Information "Executing merge operation..." -InformationAction Continue

@@ -1,0 +1,30 @@
+[
+  {
+    "CompanyName": "Acme Corp",
+    "EmailAddresses": [
+      {
+        "Address": "alice.johnson@acme.com"
+      }
+    ],
+    "GivenName": "Alice",
+    "BusinessPhones": [
+      "555-0101"
+    ],
+    "Surname": "Johnson",
+    "DisplayName": "Alice Johnson",
+    "Source": "Test Backup"
+  },
+  {
+    "CompanyName": "Tech Solutions",
+    "EmailAddresses": [
+      {
+        "Address": "bob.wilson@techsolutions.com"
+      }
+    ],
+    "GivenName": "Bob",
+    "Surname": "Wilson",
+    "MobilePhone": "555-0102",
+    "DisplayName": "Bob Wilson",
+    "Source": "Test Backup"
+  }
+]
