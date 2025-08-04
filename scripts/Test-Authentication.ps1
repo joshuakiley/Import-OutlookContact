@@ -147,7 +147,7 @@ try {
         
         # Test authentication context retrieval
         $authContext = Get-AuthenticationContext
-        if ($authContext -eq $null) {
+        if ($null -eq $authContext) {
             Add-TestResult "Auth Context" "PASS" "No authentication context (expected)"
         }
         else {

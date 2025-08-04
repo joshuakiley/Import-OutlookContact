@@ -86,8 +86,8 @@ try {
     # Load environment-specific overrides
     $envConfigPath = Join-Path $PSScriptRoot "config" "appsettings.$($Mode.ToLower()).json"
     if (Test-Path $envConfigPath) {
-        $envConfig = Get-Content $envConfigPath | ConvertFrom-Json
-        Write-Verbose "Environment configuration loaded: $Mode"
+        # $envConfig = Get-Content $envConfigPath | ConvertFrom-Json
+        Write-Verbose "Environment configuration found: $Mode (merge not yet implemented)"
         # TODO: Merge environment configuration
     }
     

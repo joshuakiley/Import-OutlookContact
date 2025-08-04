@@ -223,7 +223,7 @@ function Test-GraphConnection {
         # Test connection with a simple API call
         Write-Verbose "Testing connection with API call..."
         try {
-            $userProfile = Get-MgUser -UserId "me" -ErrorAction Stop -Verbose:$false -Select "id,displayName"
+            $currentUser = Get-MgUser -UserId "me" -ErrorAction Stop -Verbose:$false -Select "id,displayName"
         }
         catch {
             # If Get-MgUser is not available, try a different approach
@@ -236,7 +236,7 @@ function Test-GraphConnection {
             }
         }
         
-        if ($userProfile) {
+        if ($currentUser) {
             Write-Verbose "✅ Microsoft Graph connection is active"
             Write-Verbose "Connected as: $($context.Account)"
             return $true

@@ -63,12 +63,12 @@ function Get-SecureInput {
         return $plainText
     }
     else {
-        $input = Read-Host -Prompt "$Prompt $(if($DefaultValue) {"(current: $DefaultValue)"})"
-        if ([string]::IsNullOrEmpty($input) -and $DefaultValue) { 
+        $userInput = Read-Host -Prompt "$Prompt $(if($DefaultValue) {"(current: $DefaultValue)"})"
+        if ([string]::IsNullOrEmpty($userInput) -and $DefaultValue) { 
             return $DefaultValue 
         }
         else { 
-            return $input 
+            return $userInput 
         }
     }
 }
