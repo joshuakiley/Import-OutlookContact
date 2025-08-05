@@ -1,10 +1,69 @@
 # UI/UX Specification — Import-OutlookContact
 
-This document details the complete user interface, experience, and feature requirements for Import-OutlookContact. It is intended for developers, designers, and contributors, and includes: prioritized features, user flows, wireframes, backup/restore, advanced import, duplicate management, custom folders, and admin functionality.
+## Svelte + TailwindCSS + TypeScript Implementation
+
+This document details the complete user interface, experience, and feature requirements for Import-OutlookContact built with **Svelte**, **TailwindCSS**, and **TypeScript**. It includes prioritized features, user flows, component architecture, security requirements, and testing standards.
 
 ---
 
-## Prioritized UI Features Table
+## 🛠️ Technology Stack
+
+- **Frontend Framework**: Svelte 4+ with SvelteKit
+- **Styling**: TailwindCSS 3+ with custom design system
+- **Language**: TypeScript 5+ with strict mode
+- **Build Tool**: Vite
+- **Testing**: Vitest + Playwright + Testing Library/Svelte
+- **Security**: ESLint Security Plugin + OWASP compliance
+- **Backend API**: PowerShell REST endpoints with JSON communication
+
+---
+
+## 🔐 Security Requirements
+
+### Authentication & Authorization
+
+- **OAuth 2.0/OpenID Connect** integration with Microsoft Graph
+- **JWT tokens** with secure httpOnly cookies
+- **CSRF protection** with SameSite cookies
+- **Role-based access control** (Admin, User, ReadOnly)
+- **Session timeout** and automatic logout
+- **MFA support** integration
+
+### Input Validation & Sanitization
+
+- **All user input sanitized** before processing
+- **XSS prevention** using Svelte's built-in escaping
+- **File upload validation** with type/size restrictions
+- **CSV injection prevention** for data imports
+- **SQL injection prevention** in backend queries
+
+### Content Security Policy
+
+```typescript
+// Security headers configuration
+const cspPolicy = {
+  "default-src": ["'self'"],
+  "script-src": ["'self'", "'unsafe-inline'"], // Minimize unsafe-inline
+  "style-src": ["'self'", "'unsafe-inline'"],
+  "img-src": ["'self'", "data:", "https:"],
+  "connect-src": ["'self'", "https://graph.microsoft.com"],
+  "font-src": ["'self'"],
+  "object-src": ["'none'"],
+  "base-uri": ["'self'"],
+  "form-action": ["'self'"],
+};
+```
+
+### Data Protection
+
+- **Client-side data encryption** for sensitive fields
+- **Secure file handling** with virus scanning
+- **PII data masking** in logs and debugging
+- **Secure backup storage** with encryption at rest
+
+---
+
+## 🎯 Prioritized UI Features
 
 | Priority | Feature Category        | Description / Capabilities                                                                                                                                         |
 | -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -679,7 +738,7 @@ Admins get a dashboard for managing approvals, audit logs, and system health. Op
 
 ### Technical Implementation Notes
 
-- **Framework:** PowerShell Universal Dashboard (web-based, cross-platform)
+- **Framework:** Svelte + TailwindCSS + TypeScript (modern reactive web interface)
 - **Future Enhancement:** Optional Electron shell for richer desktop UX
 - **Responsive Design:** Mobile-friendly layouts for tablet/phone access
 - **Real-time Updates:** WebSocket integration for live progress updates

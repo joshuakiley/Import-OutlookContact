@@ -1,41 +1,41 @@
 {
-  "Version": "1.0.0",
-  "ContactFolder": "All Folders",
   "BackupFormat": "Multiple",
+  "IncludePhotos": false,
   "ContactFolders": [
     {
       "DisplayName": "Contacts",
-      "TotalItems": 2,
-      "Id": "folder-1"
+      "Id": "folder-1",
+      "TotalItems": 2
     },
     {
       "DisplayName": "Business Contacts",
-      "TotalItems": 1,
-      "Id": "folder-2"
+      "Id": "folder-2",
+      "TotalItems": 1
     }
   ],
+  "UserEmail": "demo@example.com",
+  "TotalContacts": 3,
+  "ContactFolder": "All Folders",
+  "BackupDate": "2025-08-05T07:29:05.112Z",
   "BackupFiles": [
     {
-      "FolderName": "All",
-      "FileSize": 2968,
+      "ContactCount": 3,
       "FileName": "demo-contacts.json",
-      "ContactCount": 3
+      "FolderName": "All",
+      "FileSize": 2968
     },
     {
-      "FolderName": "All",
-      "FileSize": 1145,
+      "ContactCount": 3,
       "FileName": "demo-contacts.vcf",
-      "ContactCount": 3
+      "FolderName": "All",
+      "FileSize": 1145
     },
     {
-      "FolderName": "All",
-      "FileSize": 1530,
+      "ContactCount": 3,
       "FileName": "demo-contacts.csv",
-      "ContactCount": 3
+      "FolderName": "All",
+      "FileSize": 1530
     }
   ],
-  "BackupDate": "2025-08-04T15:52:33.232Z",
-  "TotalContacts": 3,
-  "IncludePhotos": false,
-  "UserEmail": "demo@example.com"
+  "Version": "1.0.0"
 }

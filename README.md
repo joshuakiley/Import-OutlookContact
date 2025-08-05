@@ -1,61 +1,93 @@
 # Import-OutlookContact
 
-**Import-OutlookContact** is a cross-platform PowerShell application (with both GUI and CLI) for managing Outlook contacts across multiple users and folders, leveraging Microsoft Graph and designed for enterprise security and compliance.
+**Import-OutlookContact** is a cross-platform enterprise contact management solution with a **Svelte + TailwindCSS + TypeScript** web interface and PowerShell backend, leveraging Microsoft Graph for secure, scalable Outlook contact operations.
 
 ---
 
-## Overview
+## 🛠️ Technology Stack
 
-Import-OutlookContact enables organizations to efficiently manage Outlook contacts at scale with enterprise-grade security, accessibility, and compliance features. The application supports both GUI and command-line interfaces, making it suitable for both IT administrators and end users.
+### Frontend (Web UI)
 
-### Key Features
+- **Framework:** Svelte 4+ with SvelteKit
+- **Styling:** TailwindCSS 3+ with custom design system
+- **Language:** TypeScript 5+ with strict mode
+- **Testing:** Vitest + Playwright + Testing Library/Svelte
+- **Security:** ESLint Security Plugin + OWASP compliance
 
-- **Multi-User Contact Management:** Bulk operations across multiple users and contact folders
-- **Advanced Import Support:** vCard (.vcf), Google CSV, Outlook CSV, and generic CSV import with field mapping
-- **Backup and Restore:** Automatic backups before changes, manual backup/restore with preview functionality
-- **Flexible Duplicate Management:** Duplicate detection by email, phone, or both with intelligent merging
-- **Custom Folder Support:** Create and manage custom folders (Vendors, Contractors, Clients) beyond standard org folders
-- **Enterprise Authentication:** Azure AD OAuth 2.0 with Microsoft Authenticator and passkey support
-- **Cross-Platform Support:** Windows, macOS, and Linux compatibility (PowerShell 7+)
-- **Accessibility Compliant:** WCAG 2.1 AA compliant with full internationalization support
-- **Plugin Architecture:** Extensible system for HRIS, ticketing, and workflow integrations
-- **GDPR Compliant:** Privacy by design with comprehensive data protection features
-- **Enterprise Security:** Immutable audit logs, encryption, and comprehensive monitoring
+### Backend (API & CLI)
+
+- **Runtime:** PowerShell 7+ (cross-platform)
+- **API:** REST endpoints with JSON communication
+- **Authentication:** Microsoft Graph with OAuth 2.0/OpenID Connect
+- **Database:** Secure file-based storage with encryption
 
 ---
 
-## Quick Start
+## 🎯 Key Features
+
+- **🌐 Modern Web Interface:** Responsive Svelte UI with enterprise-grade security and accessibility
+- **👥 Multi-User Management:** Bulk operations across multiple users and contact folders
+- **📂 Advanced Import Support:** vCard (.vcf), Google CSV, Outlook CSV, and generic CSV with field mapping
+- **💾 Backup & Restore:** Automatic backups with preview functionality and point-in-time recovery
+- **🔍 Smart Duplicate Detection:** AI-powered duplicate detection with intelligent merging capabilities
+- **📁 Custom Folder Support:** Enterprise folder management (Vendors, Contractors, Clients)
+- **🔐 Enterprise Security:** OAuth 2.0, CSRF protection, XSS prevention, audit logging
+- **♿ Accessibility:** WCAG 2.1 AA compliant with full keyboard navigation and screen reader support
+- **🔌 Extensible Architecture:** Plugin system for HRIS, ticketing, and workflow integrations
+- **🛡️ GDPR Compliant:** Privacy by design with comprehensive data protection
+- **🌍 Cross-Platform:** Windows, macOS, and Linux support
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
+**Backend Requirements:**
+
 - PowerShell 7.x ([Install Guide](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell))
 - Azure App Registration with `Contacts.ReadWrite` permission
-- Microsoft Graph PowerShell SDK and Universal Dashboard modules
+- Microsoft Graph PowerShell SDK
+
+**Frontend Requirements:**
+
+- Node.js 18+ with npm/pnpm
+- Modern web browser with JavaScript enabled
 
 ### Installation
 
-```powershell
+```bash
 # Clone the repository
 git clone https://github.com/YOUR-ORG/Import-OutlookContact.git
 cd Import-OutlookContact
 
-# Install dependencies
-Install-Module Microsoft.Graph -Scope CurrentUser
-Install-Module UniversalDashboard.Community -Scope CurrentUser
+# Backend setup
+pwsh -c "Install-Module Microsoft.Graph -Scope CurrentUser"
+pwsh ./scripts/Test-Prerequisites.ps1
 
-# Verify prerequisites
-pwsh .\scripts\Test-Prerequisites.ps1
+# Frontend setup
+cd web-ui
+npm install
+npm run build
 
 # Configure the application
-pwsh .\scripts\Set-InitialConfiguration.ps1
+cd ..
+pwsh ./scripts/Set-InitialConfiguration.ps1
 ```
 
 ### Basic Usage
 
-**GUI Mode:**
+**Web Interface:**
 
-```powershell
-pwsh .\Start-ImportOutlookContact.ps1
+```bash
+# Start the modern Svelte web interface
+./start-web-interface.sh
+
+# Or manually:
+cd web-ui
+npm install
+npm run build
+npm run preview
 ```
 
 **CLI Mode:**
@@ -192,7 +224,7 @@ pwsh .\Import-OutlookContact.ps1 -Mode BulkAdd -CsvPath ./contacts.csv
 
 ### Technical Stack
 
-- **Frontend:** PowerShell Universal Dashboard (cross-platform web interface)
+- **Frontend:** Svelte + TailwindCSS + TypeScript (modern reactive web interface)
 - **Backend:** PowerShell 7 with Microsoft Graph PowerShell SDK
 - **Authentication:** Azure AD OAuth 2.0 with Microsoft Authenticator and passkey support
 - **Data Storage:** Microsoft 365 (contacts stored in user Outlook folders)

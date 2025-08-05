@@ -1,18 +1,18 @@
 [
   {
-    "BusinessPhone": "555-0101",
-    "ParentFolderId": "Contacts",
-    "EmailAddress": "john.smith@company.com",
-    "DisplayName": "John Smith",
     "JobTitle": "Software Engineer",
-    "CompanyName": "Tech Corp"
+    "ParentFolderId": "Contacts",
+    "BusinessPhone": "555-0101",
+    "EmailAddress": "john.smith@company.com",
+    "CompanyName": "Tech Corp",
+    "DisplayName": "John Smith"
   },
   {
-    "BusinessPhone": "555-0201",
-    "ParentFolderId": "Contacts",
-    "EmailAddress": "jane.doe@company.com",
-    "DisplayName": "Jane Doe",
     "JobTitle": "Project Manager",
-    "CompanyName": "Tech Corp"
+    "ParentFolderId": "Contacts",
+    "BusinessPhone": "555-0201",
+    "EmailAddress": "jane.doe@company.com",
+    "CompanyName": "Tech Corp",
+    "DisplayName": "Jane Doe"
   }
 ]

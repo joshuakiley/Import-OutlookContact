@@ -29,7 +29,8 @@ Before you begin, ensure you have the following installed:
    ```powershell
    # Install required PowerShell modules
    Install-Module Microsoft.Graph -Scope CurrentUser
-   Install-Module UniversalDashboard.Community -Scope CurrentUser
+   # Install Node.js 18+ for Svelte web interface
+   # Download from https://nodejs.org/
    Install-Module Pester -Scope CurrentUser
 
    # Verify prerequisites

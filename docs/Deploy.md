@@ -298,7 +298,7 @@ COPY . .
 
 # Install PowerShell modules
 RUN pwsh -Command "Install-Module Microsoft.Graph -Force -Scope AllUsers"
-RUN pwsh -Command "Install-Module UniversalDashboard.Community -Force -Scope AllUsers"
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs
 
 # Create non-root user
 RUN useradd -m -s /bin/bash contactsvc

@@ -22,17 +22,17 @@
     "MobilePhone": "555-555-1234",
     "BusinessAddress": {
       "PostalCode": "90210",
-      "City": "Tech City",
-      "Street": "123 Business Ave",
+      "State": "CA",
       "CountryOrRegion": "United States",
-      "State": "CA"
+      "Street": "123 Business Ave",
+      "City": "Tech City"
     },
     "HomeAddress": {
       "PostalCode": "90211",
-      "City": "Hometown",
-      "Street": "456 Home St",
+      "State": "CA",
       "CountryOrRegion": "United States",
-      "State": "CA"
+      "Street": "456 Home St",
+      "City": "Hometown"
     },
     "PersonalNotes": "Key developer for customer portal project",
     "Birthday": "1985-03-15",
@@ -60,10 +60,10 @@
     "MobilePhone": "555-555-5678",
     "BusinessAddress": {
       "PostalCode": "94105",
-      "City": "Silicon Valley",
-      "Street": "789 Innovation Dr",
+      "State": "CA",
       "CountryOrRegion": "United States",
-      "State": "CA"
+      "Street": "789 Innovation Dr",
+      "City": "Silicon Valley"
     },
     "HomeAddress": null,
     "PersonalNotes": "Excellent project coordinator, handles client communications",
@@ -94,17 +94,17 @@
     "MobilePhone": "",
     "BusinessAddress": {
       "PostalCode": "10001",
-      "City": "Analytics City",
-      "Street": "321 Data Center Blvd",
+      "State": "NY",
       "CountryOrRegion": "United States",
-      "State": "NY"
+      "Street": "321 Data Center Blvd",
+      "City": "Analytics City"
     },
     "HomeAddress": {
       "PostalCode": "10002",
-      "City": "Data Town",
-      "Street": "654 Analytics Ave",
+      "State": "NY",
       "CountryOrRegion": "United States",
-      "State": "NY"
+      "Street": "654 Analytics Ave",
+      "City": "Data Town"
     },
     "PersonalNotes": "Specialist in business intelligence and reporting",
     "Birthday": "1988-11-08",

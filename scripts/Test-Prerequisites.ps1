@@ -69,17 +69,30 @@ else {
     $allTestsPassed = $false
 }
 
-# Test 4: Universal Dashboard Module (Optional)
-Write-Information "Checking Universal Dashboard module..." -InformationAction Continue
-$udModule = Get-Module -ListAvailable -Name "UniversalDashboard*"
-if ($udModule) {
-    $testResults += @{ Test = "UniversalDashboard Module"; Status = "PASS"; Message = "Version $($udModule[0].Version) available" }
-    Write-Information "✅ UniversalDashboard module: Version $($udModule[0].Version)" -InformationAction Continue
+# Test 4: Node.js and Web UI Prerequisites
+Write-Information "Checking Node.js for Svelte web interface..." -InformationAction Continue
+try {
+    $nodeVersion = node --version 2>$null
+    if ($nodeVersion) {
+        $nodeVersionNum = [version]($nodeVersion -replace 'v', '')
+        if ($nodeVersionNum.Major -ge 18) {
+            $testResults += @{ Test = "Node.js"; Status = "PASS"; Message = "Version $nodeVersion (suitable for Svelte)" }
+            Write-Information "✅ Node.js: $nodeVersion (suitable for Svelte web interface)" -InformationAction Continue
+        }
+        else {
+            $testResults += @{ Test = "Node.js"; Status = "WARNING"; Message = "Version $nodeVersion (recommend 18+)" }
+            Write-Warning "⚠️  Node.js: Version $nodeVersion found, but 18+ recommended for Svelte"
+        }
+    }
+    else {
+        $testResults += @{ Test = "Node.js"; Status = "WARNING"; Message = "Not installed (web interface unavailable)" }
+        Write-Warning "⚠️  Node.js: Not installed (Svelte web interface will be unavailable)"
+        Write-Information "   Install from: https://nodejs.org/ (recommend LTS version 18+)" -InformationAction Continue
+    }
 }
-else {
-    $testResults += @{ Test = "UniversalDashboard Module"; Status = "WARNING"; Message = "Module not installed (web interface unavailable)" }
-    Write-Warning "⚠️  UniversalDashboard module: Not installed (web interface will be unavailable)"
-    Write-Information "   Install with: Install-Module UniversalDashboard.Community -Scope CurrentUser" -InformationAction Continue
+catch {
+    $testResults += @{ Test = "Node.js"; Status = "WARNING"; Message = "Not found or not in PATH" }
+    Write-Warning "⚠️  Node.js: Not found in PATH (install Node.js 18+ for web interface)"
 }
 
 # Test 5: Main Application Script
