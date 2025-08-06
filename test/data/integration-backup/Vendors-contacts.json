@@ -1,8 +1,8 @@
 {
-  "JobTitle": "Sales Representative",
   "ParentFolderId": "Vendors",
-  "BusinessPhone": "555-0301",
-  "EmailAddress": "bob.johnson@vendor.com",
   "CompanyName": "Vendor Inc",
-  "DisplayName": "Bob Johnson"
+  "DisplayName": "Bob Johnson",
+  "BusinessPhone": "555-0301",
+  "JobTitle": "Sales Representative",
+  "EmailAddress": "bob.johnson@vendor.com"
 }

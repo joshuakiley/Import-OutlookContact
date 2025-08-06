@@ -1,11 +1,11 @@
 {
+  "BackupDate": "08/06/2025 13:59:57",
+  "BackupVersion": "1.0.0",
+  "TotalContacts": 3,
+  "UserEmail": "integration-test@example.com",
   "Format": "JSON",
   "ContactFolders": [
     "Contacts",
     "Vendors"
-  ],
-  "BackupVersion": "1.0.0",
-  "BackupDate": "08/05/2025 07:30:59",
-  "TotalContacts": 3,
-  "UserEmail": "integration-test@example.com"
+  ]
 }

@@ -93,7 +93,16 @@ npm run preview
 **CLI Mode:**
 
 ```powershell
+# Interactive CSV Import with Duplicate Handling (Recommended)
+pwsh ./scripts/Import-CSVWithDuplicateHandling.ps1 "./csv-files/your-file.csv"
+
+# Traditional CLI Mode
 pwsh .\Import-OutlookContact.ps1 -Mode BulkAdd -CsvPath ./contacts.csv
+
+# Setup and Testing Scripts
+pwsh ./scripts/Setup-Environment.ps1        # First-time setup
+pwsh ./scripts/Test-Prerequisites.ps1       # Verify requirements
+pwsh ./scripts/Test-Authentication.ps1      # Test Graph connection
 ```
 
 ### CSV Format Example

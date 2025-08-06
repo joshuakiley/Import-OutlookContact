@@ -713,10 +713,11 @@ function Restore-UserContacts {
                 # Handle conflicts if requested
                 $contactsToRestore = $validationResult.ValidContacts
                 if ($ConflictAction -ne "Overwrite") {
-                    $conflictResult = Find-DuplicateContacts -UserEmail $UserEmail -FolderId $targetFolder.Id -NewContacts $contactsToRestore
+                    # Use global duplicate detection for restore operations too
+                    $conflictResult = Find-DuplicateContacts -UserEmail $UserEmail -FolderId $targetFolder.Id -NewContacts $contactsToRestore -GlobalSearch
                     
                     if ($conflictResult.DuplicateCount -gt 0) {
-                        Write-Information "Found $($conflictResult.DuplicateCount) potential conflicts" -InformationAction Continue
+                        Write-Information "Found $($conflictResult.DuplicateCount) potential conflicts across all folders" -InformationAction Continue
                         
                         $contactsToRestore = switch ($ConflictAction) {
                             "Skip" {
@@ -998,8 +999,8 @@ function Import-UserContacts {
         
         if ($validationResult.InvalidCount -gt 0) {
             Write-Warning "Found $($validationResult.InvalidCount) invalid contacts. Details:"
-            foreach ($error in $validationResult.ValidationErrors) {
-                Write-Warning "  - $($error.ContactIndex): $($error.Error)"
+            foreach ($item in $validationResult.ValidationErrors) {
+                Write-Warning "  - $($item.ContactIndex): $($item.ErrorMessage)"
             }
         }
         
@@ -1021,22 +1022,44 @@ function Import-UserContacts {
         # Handle duplicates if requested
         $contactsToImport = $validationResult.ValidContacts
         if ($DuplicateAction -ne "Overwrite") {
-            $duplicateResult = Find-DuplicateContacts -UserEmail $UserEmail -FolderId $targetFolder.Id -NewContacts $contactsToImport
+            # Use global duplicate detection to check across ALL folders, not just target folder
+            Write-Verbose "Checking for duplicates across all contact folders..."
+            $duplicateResult = Find-DuplicateContacts -UserEmail $UserEmail -FolderId $targetFolder.Id -NewContacts $contactsToImport -GlobalSearch
             
             if ($duplicateResult.DuplicateCount -gt 0) {
-                Write-Information "Found $($duplicateResult.DuplicateCount) potential duplicates" -InformationAction Continue
+                Write-Information "Found $($duplicateResult.DuplicateCount) potential duplicates across all folders" -InformationAction Continue
+                
+                # Show details about where duplicates were found
+                foreach ($existingContact in $duplicateResult.ExistingContacts) {
+                    if ($existingContact.SourceFolderName) {
+                        Write-Information "  - Duplicate found in folder: $($existingContact.SourceFolderName)" -InformationAction Continue
+                    }
+                }
                 
                 $contactsToImport = switch ($DuplicateAction) {
                     "Skip" {
-                        Write-Information "Skipping $($duplicateResult.DuplicateCount) duplicate contacts" -InformationAction Continue
+                        Write-Information "Skipping $($duplicateResult.DuplicateCount) duplicate contacts (found in other folders)" -InformationAction Continue
                         $duplicateResult.UniqueContacts
                     }
                     "Merge" {
                         Write-Information "Merging $($duplicateResult.DuplicateCount) duplicate contacts" -InformationAction Continue
-                        Merge-DuplicateContacts -ExistingContacts $duplicateResult.ExistingContacts -NewContacts $duplicateResult.DuplicateContacts
-                        $duplicateResult.UniqueContacts + $duplicateResult.MergedContacts
+                        
+                        # Call the actual merge function with interactive prompts
+                        $mergeResult = Merge-DuplicateContacts -ExistingContacts $duplicateResult.ExistingContacts -NewContacts $duplicateResult.DuplicateContacts -InteractiveMode $true
+                        
+                        # Combine unique contacts with successfully merged contacts
+                        $contactsToImportAfterMerge = @()
+                        $contactsToImportAfterMerge += $duplicateResult.UniqueContacts
+                        $contactsToImportAfterMerge += $mergeResult.MergedContacts
+                        
+                        Write-Information "Merge results: $($mergeResult.MergedContacts.Count) will be imported, $($mergeResult.SkippedContacts.Count) skipped" -InformationAction Continue
+                        
+                        $contactsToImportAfterMerge
                     }
                 }
+            }
+            else {
+                Write-Information "No duplicates found across all folders" -InformationAction Continue
             }
         }
         
@@ -1491,7 +1514,7 @@ function Test-ContactsValidation {
             $validationErrors += @{
                 ContactIndex = $i
                 Contact      = $contact.DisplayName
-                Error        = $errors -join "; "
+                ErrorMessage = $errors -join "; "
             }
         }
     }
@@ -1567,6 +1590,430 @@ function Get-OrCreateContactFolder {
 
 <#
 .SYNOPSIS
+    Merge duplicate contacts
+    
+.DESCRIPTION
+    Merges duplicate contacts by combining information from multiple sources.
+    Provides interactive prompts for conflict resolution.
+    
+.PARAMETER ExistingContacts
+    Array of existing contacts that match new contacts
+    
+.PARAMETER NewContacts
+    Array of new contacts to merge with existing ones
+    
+.PARAMETER InteractiveMode
+    Whether to prompt user for merge decisions (default: true)
+    
+.EXAMPLE
+    Merge-DuplicateContacts -ExistingContacts $existing -NewContacts $new -InteractiveMode $true
+#>
+function Merge-DuplicateContacts {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$ExistingContacts,
+        
+        [Parameter(Mandatory = $true)]
+        [array]$NewContacts,
+        
+        [Parameter(Mandatory = $false)]
+        [bool]$InteractiveMode = $true
+    )
+    
+    try {
+        Write-Information "Starting duplicate contact merge process..." -InformationAction Continue
+        $mergedResults = @{
+            MergedContacts  = @()
+            SkippedContacts = @()
+            UpdatedContacts = @()
+        }
+        
+        # Group contacts by email for merging
+        $mergeGroups = @{}
+        
+        # Add existing contacts to merge groups
+        foreach ($existingContact in $ExistingContacts) {
+            if ($existingContact.EmailAddresses -and $existingContact.EmailAddresses.Count -gt 0) {
+                $email = $existingContact.EmailAddresses[0].Address.ToLower()
+                if (-not $mergeGroups.ContainsKey($email)) {
+                    $mergeGroups[$email] = @{
+                        Existing = @()
+                        New      = @()
+                    }
+                }
+                $mergeGroups[$email].Existing += $existingContact
+            }
+        }
+        
+        # Add new contacts to merge groups
+        foreach ($newContact in $NewContacts) {
+            if ($newContact.EmailAddresses -and $newContact.EmailAddresses.Count -gt 0) {
+                $email = $newContact.EmailAddresses[0].Address.ToLower()
+                if ($mergeGroups.ContainsKey($email)) {
+                    $mergeGroups[$email].New += $newContact
+                }
+            }
+        }
+        
+        # Process each merge group
+        foreach ($email in $mergeGroups.Keys) {
+            $group = $mergeGroups[$email]
+            
+            if ($group.Existing.Count -gt 0 -and $group.New.Count -gt 0) {
+                Write-Information "" -InformationAction Continue
+                Write-Information "========================================" -InformationAction Continue
+                Write-Information "🔍 DUPLICATE CONTACT DETECTED" -InformationAction Continue
+                Write-Information "========================================" -InformationAction Continue
+                Write-Information "Email: $email" -InformationAction Continue
+                Write-Information "" -InformationAction Continue
+                
+                $existing = $group.Existing[0]
+                $new = $group.New[0]
+                
+                # Show detailed comparison
+                Write-Information "📋 DETAILED COMPARISON:" -InformationAction Continue
+                Write-Information "" -InformationAction Continue
+                
+                $comparisonFields = @(
+                    @{ Name = "Name"; ExistingValue = $existing.DisplayName; NewValue = $new.DisplayName },
+                    @{ Name = "Company"; ExistingValue = $existing.CompanyName; NewValue = $new.CompanyName },
+                    @{ Name = "Job Title"; ExistingValue = $existing.JobTitle; NewValue = $new.JobTitle },
+                    @{ Name = "Business Phone"; ExistingValue = ($existing.BusinessPhones -join ', '); NewValue = ($new.BusinessPhones -join ', ') },
+                    @{ Name = "Mobile Phone"; ExistingValue = $existing.MobilePhone; NewValue = $new.MobilePhone },
+                    @{ Name = "Home Phone"; ExistingValue = ($existing.HomePhones -join ', '); NewValue = ($new.HomePhones -join ', ') },
+                    @{ Name = "Department"; ExistingValue = $existing.Department; NewValue = $new.Department },
+                    @{ Name = "Business Address"; ExistingValue = "$($existing.BusinessAddress.Street), $($existing.BusinessAddress.City), $($existing.BusinessAddress.State)"; NewValue = "$($new.BusinessAddress.Street), $($new.BusinessAddress.City), $($new.BusinessAddress.State)" },
+                    @{ Name = "Notes"; ExistingValue = $existing.PersonalNotes; NewValue = $new.PersonalNotes }
+                )
+                
+                foreach ($field in $comparisonFields) {
+                    $existingVal = if ([string]::IsNullOrWhiteSpace($field.ExistingValue)) { "[empty]" } else { $field.ExistingValue }
+                    $newVal = if ([string]::IsNullOrWhiteSpace($field.NewValue)) { "[empty]" } else { $field.NewValue }
+                    
+                    Write-Information "  $($field.Name):" -InformationAction Continue
+                    Write-Information "    📁 Existing ($($existing.SourceFolderName)): $existingVal" -InformationAction Continue
+                    Write-Information "    📥 New (to import): $newVal" -InformationAction Continue
+                    
+                    if ($existingVal -ne $newVal) {
+                        Write-Information "    ⚠️  VALUES DIFFER" -InformationAction Continue
+                    }
+                    Write-Information "" -InformationAction Continue
+                }
+                
+                if ($InteractiveMode) {
+                    Write-Information "========================================" -InformationAction Continue
+                    Write-Information "🎯 MERGE OPTIONS:" -InformationAction Continue
+                    Write-Information "1. Skip importing (keep existing contact only)" -InformationAction Continue
+                    Write-Information "2. Import as separate contact (allow duplicate)" -InformationAction Continue
+                    Write-Information "3. Merge contacts with selective field control" -InformationAction Continue
+                    Write-Information "4. Replace existing contact entirely" -InformationAction Continue
+                    Write-Information "========================================" -InformationAction Continue
+                    
+                    do {
+                        $choice = Read-Host "Enter your choice (1-4)"
+                    } while ($choice -notin @("1", "2", "3", "4"))
+                    
+                    switch ($choice) {
+                        "1" {
+                            Write-Information "✅ Skipping import for: $($new.DisplayName)" -InformationAction Continue
+                            $mergedResults.SkippedContacts += $new
+                        }
+                        "2" {
+                            Write-Information "✅ Importing as separate contact: $($new.DisplayName)" -InformationAction Continue
+                            $mergedResults.MergedContacts += $new
+                        }
+                        "3" {
+                            Write-Information "🔧 Starting interactive merge..." -InformationAction Continue
+                            $mergedContact = Invoke-InteractiveMerge -ExistingContact $existing -NewContact $new
+                            if ($mergedContact) {
+                                $mergedResults.UpdatedContacts += $mergedContact
+                                Write-Information "✅ Contact will be updated with merged data" -InformationAction Continue
+                            }
+                            else {
+                                $mergedResults.SkippedContacts += $new
+                                Write-Information "❌ Merge cancelled - skipping import" -InformationAction Continue
+                            }
+                        }
+                        "4" {
+                            Write-Information "⚠️ Replacing existing contact entirely..." -InformationAction Continue
+                            Write-Warning "This will completely replace the existing contact. Are you sure? (y/N)"
+                            $confirm = Read-Host
+                            if ($confirm.ToLower() -eq 'y') {
+                                $mergedResults.UpdatedContacts += $new
+                                Write-Information "✅ Existing contact will be replaced" -InformationAction Continue
+                            }
+                            else {
+                                $mergedResults.SkippedContacts += $new
+                                Write-Information "❌ Replace cancelled - skipping import" -InformationAction Continue
+                            }
+                        }
+                    }
+                }
+                else {
+                    # Non-interactive mode - default to skip
+                    Write-Information "🤖 Non-interactive mode: Skipping duplicate contact: $($new.DisplayName)" -InformationAction Continue
+                    $mergedResults.SkippedContacts += $new
+                }
+            }
+        }
+        
+        return $mergedResults
+        
+    }
+    catch {
+        Write-Error "Failed to merge duplicate contacts: $($_.Exception.Message)"
+        throw
+    }
+}
+
+<#
+.SYNOPSIS
+    Interactive merge of two contacts with field-by-field control
+    
+.DESCRIPTION
+    Provides detailed field-by-field control during contact merge process.
+    
+.PARAMETER ExistingContact
+    Existing contact to merge into
+    
+.PARAMETER NewContact
+    New contact data to merge from
+    
+.EXAMPLE
+    Invoke-InteractiveMerge -ExistingContact $existing -NewContact $new
+#>
+function Invoke-InteractiveMerge {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSObject]$ExistingContact,
+        
+        [Parameter(Mandatory = $true)]
+        [PSObject]$NewContact
+    )
+    
+    try {
+        Write-Information "" -InformationAction Continue
+        Write-Information "🔧 INTERACTIVE FIELD-BY-FIELD MERGE" -InformationAction Continue
+        Write-Information "=====================================" -InformationAction Continue
+        Write-Information "For each field, choose which value to keep:" -InformationAction Continue
+        Write-Information "  E = Keep existing value" -InformationAction Continue
+        Write-Information "  N = Use new value" -InformationAction Continue
+        Write-Information "  C = Combine both values" -InformationAction Continue
+        Write-Information "  S = Skip field (leave empty)" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        
+        # Create merged contact starting with existing
+        $mergedContact = $ExistingContact.PSObject.Copy()
+        
+        # Define fields to merge interactively
+        $mergeableFields = @(
+            @{ 
+                Name          = "Display Name"
+                Property      = "DisplayName"
+                ExistingValue = $ExistingContact.DisplayName
+                NewValue      = $NewContact.DisplayName
+                AllowCombine  = $false
+            },
+            @{ 
+                Name          = "Company Name"
+                Property      = "CompanyName"
+                ExistingValue = $ExistingContact.CompanyName
+                NewValue      = $NewContact.CompanyName
+                AllowCombine  = $false
+            },
+            @{ 
+                Name          = "Job Title"
+                Property      = "JobTitle"
+                ExistingValue = $ExistingContact.JobTitle
+                NewValue      = $NewContact.JobTitle
+                AllowCombine  = $false
+            },
+            @{ 
+                Name          = "Department"
+                Property      = "Department"
+                ExistingValue = $ExistingContact.Department
+                NewValue      = $NewContact.Department
+                AllowCombine  = $false
+            },
+            @{ 
+                Name          = "Business Phone"
+                Property      = "BusinessPhones"
+                ExistingValue = ($ExistingContact.BusinessPhones -join ', ')
+                NewValue      = ($NewContact.BusinessPhones -join ', ')
+                AllowCombine  = $true
+            },
+            @{ 
+                Name          = "Mobile Phone"
+                Property      = "MobilePhone"
+                ExistingValue = $ExistingContact.MobilePhone
+                NewValue      = $NewContact.MobilePhone
+                AllowCombine  = $false
+            },
+            @{ 
+                Name          = "Home Phone"
+                Property      = "HomePhones"
+                ExistingValue = ($ExistingContact.HomePhones -join ', ')
+                NewValue      = ($NewContact.HomePhones -join ', ')
+                AllowCombine  = $true
+            },
+            @{ 
+                Name          = "Personal Notes"
+                Property      = "PersonalNotes"
+                ExistingValue = $ExistingContact.PersonalNotes
+                NewValue      = $NewContact.PersonalNotes
+                AllowCombine  = $true
+            }
+        )
+        
+        $changesCount = 0
+        
+        foreach ($field in $mergeableFields) {
+            $existingVal = if ([string]::IsNullOrWhiteSpace($field.ExistingValue)) { "[empty]" } else { $field.ExistingValue }
+            $newVal = if ([string]::IsNullOrWhiteSpace($field.NewValue)) { "[empty]" } else { $field.NewValue }
+            
+            # Skip if values are the same (including both empty)
+            if ($field.ExistingValue -eq $field.NewValue) {
+                Write-Information "✅ $($field.Name): Values are identical - keeping existing" -InformationAction Continue
+                continue
+            }
+            
+            # Skip if both values are empty/null (no meaningful choice to make)
+            if ([string]::IsNullOrWhiteSpace($field.ExistingValue) -and [string]::IsNullOrWhiteSpace($field.NewValue)) {
+                Write-Information "✅ $($field.Name): Both values are empty - skipping" -InformationAction Continue
+                continue
+            }
+            
+            Write-Information "📝 $($field.Name):" -InformationAction Continue
+            Write-Information "    [E] Existing: $existingVal" -InformationAction Continue
+            Write-Information "    [N] New:      $newVal" -InformationAction Continue
+            
+            # Determine if combine option should be available
+            $canCombine = $field.AllowCombine -and -not [string]::IsNullOrWhiteSpace($field.ExistingValue) -and -not [string]::IsNullOrWhiteSpace($field.NewValue)
+            
+            if ($canCombine) {
+                Write-Information "    [C] Combined: $($field.ExistingValue); $($field.NewValue)" -InformationAction Continue
+            }
+            
+            Write-Information "    [S] Skip (leave empty)" -InformationAction Continue
+            
+            do {
+                if ($canCombine) {
+                    $choice = Read-Host "    Choice (E/N/C/S)"
+                    $validChoices = @("E", "N", "C", "S", "e", "n", "c", "s")
+                }
+                else {
+                    $choice = Read-Host "    Choice (E/N/S)"
+                    $validChoices = @("E", "N", "S", "e", "n", "s")
+                }
+            } while ($choice -notin $validChoices)
+            
+            $choice = $choice.ToUpper()
+            $changesCount++
+            
+            switch ($choice) {
+                "E" {
+                    Write-Information "    ✅ Keeping existing value" -InformationAction Continue
+                    # No change needed - already has existing value
+                }
+                "N" {
+                    Write-Information "    ✅ Using new value" -InformationAction Continue
+                    # Update the merged contact with new value
+                    switch ($field.Property) {
+                        "BusinessPhones" {
+                            $mergedContact.BusinessPhones = $NewContact.BusinessPhones
+                        }
+                        "HomePhones" {
+                            $mergedContact.HomePhones = $NewContact.HomePhones
+                        }
+                        default {
+                            $mergedContact.($field.Property) = $NewContact.($field.Property)
+                        }
+                    }
+                }
+                "C" {
+                    if ($field.AllowCombine) {
+                        Write-Information "    ✅ Combining values" -InformationAction Continue
+                        switch ($field.Property) {
+                            "BusinessPhones" {
+                                $combined = @()
+                                if ($ExistingContact.BusinessPhones) { $combined += $ExistingContact.BusinessPhones }
+                                if ($NewContact.BusinessPhones) { $combined += $NewContact.BusinessPhones }
+                                $mergedContact.BusinessPhones = ($combined | Select-Object -Unique)
+                            }
+                            "HomePhones" {
+                                $combined = @()
+                                if ($ExistingContact.HomePhones) { $combined += $ExistingContact.HomePhones }
+                                if ($NewContact.HomePhones) { $combined += $NewContact.HomePhones }
+                                $mergedContact.HomePhones = ($combined | Select-Object -Unique)
+                            }
+                            "PersonalNotes" {
+                                $combinedNotes = @()
+                                if (-not [string]::IsNullOrWhiteSpace($ExistingContact.PersonalNotes)) { 
+                                    $combinedNotes += $ExistingContact.PersonalNotes 
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($NewContact.PersonalNotes)) { 
+                                    $combinedNotes += $NewContact.PersonalNotes 
+                                }
+                                $mergedContact.PersonalNotes = $combinedNotes -join "; "
+                            }
+                        }
+                    }
+                }
+                "S" {
+                    Write-Information "    ✅ Skipping field (leaving empty)" -InformationAction Continue
+                    # Clear the field
+                    switch ($field.Property) {
+                        "BusinessPhones" {
+                            $mergedContact.BusinessPhones = @()
+                        }
+                        "HomePhones" {
+                            $mergedContact.HomePhones = @()
+                        }
+                        default {
+                            $mergedContact.($field.Property) = ""
+                        }
+                    }
+                }
+            }
+            Write-Information "" -InformationAction Continue
+        }
+        
+        # Show final merge summary
+        Write-Information "=====================================" -InformationAction Continue
+        Write-Information "📋 MERGE SUMMARY" -InformationAction Continue
+        Write-Information "=====================================" -InformationAction Continue
+        Write-Information "Final merged contact:" -InformationAction Continue
+        Write-Information "  Name: $($mergedContact.DisplayName)" -InformationAction Continue
+        Write-Information "  Company: $($mergedContact.CompanyName)" -InformationAction Continue
+        Write-Information "  Job Title: $($mergedContact.JobTitle)" -InformationAction Continue
+        Write-Information "  Business Phone: $($mergedContact.BusinessPhones -join ', ')" -InformationAction Continue
+        Write-Information "  Mobile Phone: $($mergedContact.MobilePhone)" -InformationAction Continue
+        Write-Information "  Notes: $($mergedContact.PersonalNotes)" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        
+        Write-Information "Apply this merge? (Y/n)" -InformationAction Continue
+        $confirm = Read-Host
+        
+        if ($confirm.ToLower() -ne 'n') {
+            Write-Information "✅ Merge approved!" -InformationAction Continue
+            return $mergedContact
+        }
+        else {
+            Write-Information "❌ Merge cancelled" -InformationAction Continue
+            return $null
+        }
+        
+    }
+    catch {
+        Write-Error "Failed to perform interactive merge: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+<#
+.SYNOPSIS
     Find duplicate contacts
     
 .DESCRIPTION
@@ -1594,14 +2041,129 @@ function Find-DuplicateContacts {
         [string]$FolderId,
         
         [Parameter(Mandatory = $true)]
-        [array]$NewContacts
+        [array]$NewContacts,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$GlobalSearch
     )
     
     try {
-        Write-Verbose "Finding duplicate contacts in folder: $FolderId"
-        
-        # Get existing contacts
-        $existingContacts = Get-ContactsFromFolder -UserEmail $UserEmail -FolderId $FolderId
+        if ($GlobalSearch) {
+            Write-Verbose "Finding duplicate contacts across ALL FOLDERS for user: $UserEmail"
+            
+            $allContacts = @()
+            $folderContactCount = @{}
+            
+            # FIRST: Get contacts from DEFAULT "Contacts" folder using direct API
+            Write-Verbose "Retrieving contacts from default 'Contacts' folder"
+            $uri = "https://graph.microsoft.com/v1.0/users/$UserEmail/contacts"
+            $defaultFolderContacts = @()
+            
+            do {
+                $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+                if ($response.value) {
+                    # Add folder information to each contact
+                    foreach ($contact in $response.value) {
+                        $contact | Add-Member -NotePropertyName "SourceFolderName" -NotePropertyValue "Contacts" -Force
+                        $contact | Add-Member -NotePropertyName "SourceFolderId" -NotePropertyValue "default" -Force
+                    }
+                    $defaultFolderContacts += $response.value
+                }
+                $uri = $response.'@odata.nextLink'  # Get next page URL
+            } while ($uri)
+            
+            $folderContactCount["Contacts"] = $defaultFolderContacts.Count
+            $allContacts += $defaultFolderContacts
+            Write-Verbose "Retrieved $($defaultFolderContacts.Count) contacts from default 'Contacts' folder"
+            
+            # SECOND: Get all named contact folders
+            $contactFolders = Get-UserContactFolders -UserEmail $UserEmail
+            Write-Verbose "Found $($contactFolders.Count) named contact folders to search"
+            
+            # Get contacts from each named folder
+            foreach ($folder in $contactFolders) {
+                Write-Verbose "Retrieving contacts from named folder: $($folder.DisplayName)"
+                $uri = "https://graph.microsoft.com/v1.0/users/$UserEmail/contactFolders/$($folder.Id)/contacts"
+                $folderContacts = @()
+                
+                do {
+                    $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+                    if ($response.value) {
+                        # Add folder information to each contact
+                        foreach ($contact in $response.value) {
+                            $contact | Add-Member -NotePropertyName "SourceFolderName" -NotePropertyValue $folder.DisplayName -Force
+                            $contact | Add-Member -NotePropertyName "SourceFolderId" -NotePropertyValue $folder.Id -Force
+                        }
+                        $folderContacts += $response.value
+                    }
+                    $uri = $response.'@odata.nextLink'  # Get next page URL
+                } while ($uri)
+                
+                $folderContactCount[$folder.DisplayName] = $folderContacts.Count
+                $allContacts += $folderContacts
+                Write-Verbose "Retrieved $($folderContacts.Count) contacts from named folder: $($folder.DisplayName)"
+            }
+            
+            Write-Verbose "Retrieved $($allContacts.Count) total contacts from default folder + $($contactFolders.Count) named folders"
+            Write-Verbose "Folder breakdown: $(($folderContactCount.Keys | ForEach-Object { "$_ ($($folderContactCount[$_]))" }) -join ', ')"
+            
+            $existingContacts = @()
+            if ($allContacts) {
+                foreach ($graphContact in $allContacts) {
+                    # Convert Graph API format to our internal format
+                    $contact = [PSCustomObject]@{
+                        Id               = $graphContact.id
+                        DisplayName      = $graphContact.displayName
+                        GivenName        = $graphContact.givenName
+                        Surname          = $graphContact.surname
+                        MiddleName       = $graphContact.middleName
+                        CompanyName      = $graphContact.companyName
+                        JobTitle         = $graphContact.jobTitle
+                        Department       = $graphContact.department
+                        EmailAddresses   = if ($graphContact.emailAddresses) { 
+                            $graphContact.emailAddresses | Where-Object { $_.address } | ForEach-Object { @{ Address = $_.address } }
+                        }
+                        else { @() }
+                        BusinessPhones   = if ($graphContact.businessPhones) { $graphContact.businessPhones } else { @() }
+                        HomePhones       = if ($graphContact.homePhones) { $graphContact.homePhones } else { @() }
+                        MobilePhone      = $graphContact.mobilePhone
+                        PersonalNotes    = $graphContact.personalNotes
+                        SourceFolderName = $graphContact.SourceFolderName
+                        SourceFolderId   = $graphContact.SourceFolderId
+                        ParentFolderId   = $graphContact.parentFolderId
+                        BusinessAddress  = if ($graphContact.businessAddress) {
+                            @{
+                                Street     = $graphContact.businessAddress.street
+                                City       = $graphContact.businessAddress.city
+                                State      = $graphContact.businessAddress.state
+                                PostalCode = $graphContact.businessAddress.postalCode
+                                Country    = $graphContact.businessAddress.countryOrRegion
+                            }
+                        }
+                        else { @{} }
+                        HomeAddress      = if ($graphContact.homeAddress) {
+                            @{
+                                Street     = $graphContact.homeAddress.street
+                                City       = $graphContact.homeAddress.city
+                                State      = $graphContact.homeAddress.state
+                                PostalCode = $graphContact.homeAddress.postalCode
+                                Country    = $graphContact.homeAddress.countryOrRegion
+                            }
+                        }
+                        else { @{} }
+                    }
+                    $existingContacts += $contact
+                }
+            }
+            
+            Write-Verbose "Found $($existingContacts.Count) existing contacts using ALL FOLDERS method"
+        }
+        else {
+            Write-Verbose "Finding duplicate contacts in folder: $FolderId"
+            
+            # Get existing contacts from specific folder only
+            $existingContacts = Get-ContactsFromFolder -UserEmail $UserEmail -FolderId $FolderId
+        }
         
         if (-not $existingContacts -or $existingContacts.Count -eq 0) {
             return @{
@@ -1615,9 +2177,15 @@ function Find-DuplicateContacts {
         # Build email lookup for existing contacts
         $existingEmails = @{}
         foreach ($contact in $existingContacts) {
-            if ($contact.EmailAddresses -and $contact.EmailAddresses.Count -gt 0) {
-                $email = $contact.EmailAddresses[0].Address.ToLower()
-                $existingEmails[$email] = $contact
+            if ($contact -and $contact.EmailAddresses -and $contact.EmailAddresses.Count -gt 0) {
+                $emailAddress = $contact.EmailAddresses[0].Address
+                if ($emailAddress) {
+                    $email = $emailAddress.ToLower()
+                    if (-not $existingEmails.ContainsKey($email)) {
+                        $existingEmails[$email] = @()
+                    }
+                    $existingEmails[$email] += $contact
+                }
             }
         }
         
@@ -1629,13 +2197,22 @@ function Find-DuplicateContacts {
         foreach ($newContact in $NewContacts) {
             $isDuplicate = $false
             
-            if ($newContact.EmailAddresses -and $newContact.EmailAddresses.Count -gt 0) {
-                $email = $newContact.EmailAddresses[0].Address.ToLower()
-                
-                if ($existingEmails.ContainsKey($email)) {
-                    $duplicateContacts += $newContact
-                    $matchingExistingContacts += $existingEmails[$email]
-                    $isDuplicate = $true
+            if ($newContact -and $newContact.EmailAddresses -and $newContact.EmailAddresses.Count -gt 0) {
+                $emailAddress = $newContact.EmailAddresses[0].Address
+                if ($emailAddress) {
+                    $email = $emailAddress.ToLower()
+                    
+                    if ($existingEmails.ContainsKey($email)) {
+                        $duplicateContacts += $newContact
+                        # Add all matching existing contacts (could be multiple across folders)
+                        $matchingExistingContacts += $existingEmails[$email]
+                        $isDuplicate = $true
+                        
+                        if ($GlobalSearch -and $existingEmails[$email].Count -gt 0) {
+                            $folderInfo = $existingEmails[$email] | Select-Object -First 1
+                            Write-Verbose "Found duplicate for '$($newContact.DisplayName)' in folder: $($folderInfo.SourceFolderName)"
+                        }
+                    }
                 }
             }
             
@@ -1645,10 +2222,11 @@ function Find-DuplicateContacts {
         }
         
         return @{
-            DuplicateCount    = $duplicateContacts.Count
-            UniqueContacts    = $uniqueContacts
-            DuplicateContacts = $duplicateContacts
-            ExistingContacts  = $matchingExistingContacts
+            DuplicateCount      = $duplicateContacts.Count
+            UniqueContacts      = $uniqueContacts
+            DuplicateContacts   = $duplicateContacts
+            ExistingContacts    = $matchingExistingContacts
+            AllExistingContacts = $existingContacts  # Add this for debugging
         }
     }
     catch {
@@ -1802,11 +2380,421 @@ function Add-ContactToFolder {
     }
 }
 
+<#
+.SYNOPSIS
+    Import CSV with intelligent folder placement and duplicate handling
+    
+.DESCRIPTION
+    Imports contacts from CSV with smart folder placement based on company names,
+    comprehensive duplicate detection across all folders, and intelligent merging.
+    
+.PARAMETER UserEmail
+    Target user's email address
+    
+.PARAMETER ImportFilePath
+    Path to CSV file to import
+    
+.PARAMETER CompanyFolderMapping
+    Hashtable mapping company names to folder names (e.g., @{"Acme Corp" = "Vendors"; "Internal" = "Employees"})
+    
+.PARAMETER DefaultFolder
+    Default folder for contacts without specific company mapping (default: "Contacts")
+    
+.PARAMETER DuplicateAction
+    How to handle duplicates: Skip, Merge, Overwrite (default: Merge)
+    
+.PARAMETER InteractiveMode
+    Whether to prompt for merge decisions (default: true)
+    
+.PARAMETER CreateFolders
+    Whether to create folders if they don't exist (default: true)
+    
+.EXAMPLE
+    Import-CSVWithIntelligentPlacement -UserEmail "user@domain.com" -ImportFilePath ".\contacts.csv" -CompanyFolderMapping @{"Acme Corp" = "Vendors"; "TechCorp" = "Partners"}
+    
+.EXAMPLE
+    Import-CSVWithIntelligentPlacement -UserEmail "user@domain.com" -ImportFilePath ".\employees.csv" -DefaultFolder "Staff" -DuplicateAction "Merge" -InteractiveMode $false
+#>
+function Import-CSVWithIntelligentPlacement {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserEmail,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ImportFilePath,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$CompanyFolderMapping = @{},
+        
+        [Parameter(Mandatory = $false)]
+        [string]$DefaultFolder = "Contacts",
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Skip", "Merge", "Overwrite")]
+        [string]$DuplicateAction = "Merge",
+        
+        [Parameter(Mandatory = $false)]
+        [bool]$InteractiveMode = $true,
+        
+        [Parameter(Mandatory = $false)]
+        [bool]$CreateFolders = $true
+    )
+    
+    try {
+        Write-Information "🚀 Starting intelligent CSV import for user: $UserEmail" -InformationAction Continue
+        Write-Information "📁 Import file: $ImportFilePath" -InformationAction Continue
+        Write-Information "🎯 Duplicate action: $DuplicateAction" -InformationAction Continue
+        Write-Information "🤖 Interactive mode: $InteractiveMode" -InformationAction Continue
+        
+        # Validate file exists
+        if (-not (Test-Path $ImportFilePath)) {
+            throw "Import file not found: $ImportFilePath"
+        }
+        
+        # Validate authentication and permissions
+        if (-not (Test-GraphConnection)) {
+            throw "Microsoft Graph authentication required. Please run Initialize-GraphAuthenticationAuto or Initialize-GraphAuthentication first."
+        }
+        
+        if (-not (Test-RequiredPermissions -RequiredScopes @("Contacts.ReadWrite", "User.Read"))) {
+            throw "Required permissions not available. Please ensure Contacts.ReadWrite and User.Read permissions are granted."
+        }
+        
+        # Import and validate CSV contacts
+        Write-Information "📊 Parsing CSV file..." -InformationAction Continue
+        $importedContacts = Import-ContactsFromCSV -FilePath $ImportFilePath -MappingProfile "Default"
+        
+        if (-not $importedContacts -or $importedContacts.Count -eq 0) {
+            throw "No valid contacts found in CSV file"
+        }
+        
+        Write-Information "✅ Found $($importedContacts.Count) contacts in CSV file" -InformationAction Continue
+        
+        # Validate contacts
+        $validationResult = Test-ContactsValidation -Contacts $importedContacts
+        Write-Information "🔍 Validation: $($validationResult.ValidCount) valid, $($validationResult.InvalidCount) invalid" -InformationAction Continue
+        
+        if ($validationResult.InvalidCount -gt 0) {
+            Write-Warning "Found $($validationResult.InvalidCount) invalid contacts:"
+            foreach ($error in $validationResult.ValidationErrors) {
+                Write-Warning "  - Contact $($error.ContactIndex + 1): $($error.ErrorMessage)"
+            }
+        }
+        
+        if ($validationResult.ValidCount -eq 0) {
+            throw "No valid contacts to import after validation"
+        }
+        
+        # Group contacts by target folder based on company mapping
+        Write-Information "🎯 Analyzing folder placement..." -InformationAction Continue
+        $folderGroups = @{}
+        $placementStats = @{}
+        
+        foreach ($contact in $validationResult.ValidContacts) {
+            $targetFolder = $DefaultFolder  # Default fallback
+            
+            # Check if contact has company information
+            if (-not [string]::IsNullOrWhiteSpace($contact.CompanyName)) {
+                # Look for exact company match first
+                $exactMatch = $CompanyFolderMapping.Keys | Where-Object { $contact.CompanyName -eq $_ }
+                if ($exactMatch) {
+                    $targetFolder = $CompanyFolderMapping[$exactMatch]
+                    Write-Verbose "Exact company match: '$($contact.CompanyName)' → '$targetFolder'"
+                }
+                else {
+                    # Look for partial company match (case-insensitive)
+                    $partialMatch = $CompanyFolderMapping.Keys | Where-Object { 
+                        $contact.CompanyName -like "*$_*" -or $_ -like "*$($contact.CompanyName)*" 
+                    } | Select-Object -First 1
+                    
+                    if ($partialMatch) {
+                        $targetFolder = $CompanyFolderMapping[$partialMatch]
+                        Write-Verbose "Partial company match: '$($contact.CompanyName)' → '$targetFolder' (matched '$partialMatch')"
+                    }
+                    else {
+                        Write-Verbose "No company match for '$($contact.CompanyName)', using default folder: '$targetFolder'"
+                    }
+                }
+            }
+            else {
+                Write-Verbose "No company information for '$($contact.DisplayName)', using default folder: '$targetFolder'"
+            }
+            
+            # Add to folder group
+            if (-not $folderGroups.ContainsKey($targetFolder)) {
+                $folderGroups[$targetFolder] = @()
+                $placementStats[$targetFolder] = 0
+            }
+            $folderGroups[$targetFolder] += $contact
+            $placementStats[$targetFolder]++
+        }
+        
+        Write-Information "" -InformationAction Continue
+        Write-Information "📋 FOLDER PLACEMENT ANALYSIS:" -InformationAction Continue
+        foreach ($folder in $placementStats.Keys | Sort-Object) {
+            Write-Information "  📁 ${folder}: $($placementStats[$folder]) contacts" -InformationAction Continue
+        }
+        Write-Information "" -InformationAction Continue
+        
+        # Get or create target folders
+        Write-Information "📁 Preparing target folders..." -InformationAction Continue
+        $targetFolders = @{}
+        
+        foreach ($folderName in $folderGroups.Keys) {
+            try {
+                if ($CreateFolders) {
+                    $folder = Get-OrCreateContactFolder -UserEmail $UserEmail -FolderName $folderName
+                    $targetFolders[$folderName] = $folder
+                    Write-Verbose "✅ Folder ready: $folderName (ID: $($folder.Id))"
+                }
+                else {
+                    # Only use existing folders
+                    $existingFolders = Get-UserContactFolders -UserEmail $UserEmail
+                    $folder = $existingFolders | Where-Object { $_.DisplayName -eq $folderName }
+                    if (-not $folder -and $folderName -eq "Contacts") {
+                        # Special case: "Contacts" is the default folder, create a placeholder
+                        $targetFolders[$folderName] = @{ Id = "default"; DisplayName = "Contacts" }
+                    }
+                    elseif ($folder) {
+                        $targetFolders[$folderName] = $folder
+                        Write-Verbose "✅ Using existing folder: $folderName (ID: $($folder.Id))"
+                    }
+                    else {
+                        Write-Warning "⚠️  Folder '$folderName' doesn't exist and CreateFolders is disabled. Contacts will go to default folder."
+                        $targetFolders[$folderName] = @{ Id = "default"; DisplayName = "Contacts" }
+                    }
+                }
+            }
+            catch {
+                Write-Warning "Failed to prepare folder '$folderName': $($_.Exception.Message). Using default folder."
+                $targetFolders[$folderName] = @{ Id = "default"; DisplayName = "Contacts" }
+            }
+        }
+        
+        # Perform comprehensive duplicate detection across ALL folders
+        Write-Information "🔍 Checking for duplicates across all folders..." -InformationAction Continue
+        
+        # Use our enhanced global search to find duplicates across all folders
+        $duplicateResult = Find-DuplicateContacts -UserEmail $UserEmail -FolderId "dummy" -NewContacts $validationResult.ValidContacts -GlobalSearch
+        
+        Write-Information "" -InformationAction Continue
+        Write-Information "📊 DUPLICATE DETECTION RESULTS:" -InformationAction Continue
+        Write-Information "  ✅ Unique contacts: $($duplicateResult.UniqueContacts.Count)" -InformationAction Continue
+        Write-Information "  ⚠️  Duplicate contacts: $($duplicateResult.DuplicateCount)" -InformationAction Continue
+        Write-Information "  🗂️  Existing contacts checked: $($duplicateResult.AllExistingContacts.Count)" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        
+        # Handle duplicates based on action
+        $contactsToImport = @()
+        $skippedDuplicates = @()
+        $mergedContacts = @()
+        
+        if ($duplicateResult.DuplicateCount -gt 0) {
+            switch ($DuplicateAction) {
+                "Skip" {
+                    Write-Information "⏭️  Skipping $($duplicateResult.DuplicateCount) duplicate contacts..." -InformationAction Continue
+                    $contactsToImport = $duplicateResult.UniqueContacts
+                    $skippedDuplicates = $duplicateResult.DuplicateContacts
+                }
+                "Overwrite" {
+                    Write-Information "🔄 Will overwrite $($duplicateResult.DuplicateCount) existing contacts..." -InformationAction Continue
+                    $contactsToImport = $validationResult.ValidContacts  # Import all, including duplicates
+                }
+                "Merge" {
+                    Write-Information "🤝 Processing $($duplicateResult.DuplicateCount) duplicates for merging..." -InformationAction Continue
+                    
+                    # Add unique contacts first
+                    $contactsToImport = $duplicateResult.UniqueContacts
+                    
+                    # Process duplicates for merging
+                    if ($InteractiveMode) {
+                        $mergeResult = Merge-DuplicateContacts -ExistingContacts $duplicateResult.ExistingContacts -NewContacts $duplicateResult.DuplicateContacts -InteractiveMode $true
+                        $contactsToImport += $mergeResult.MergedContacts
+                        $skippedDuplicates += $mergeResult.SkippedContacts
+                        $mergedContacts += $mergeResult.UpdatedContacts
+                    }
+                    else {
+                        # Non-interactive merge: use simple field combination logic
+                        Write-Information "🤖 Performing automatic merge for duplicates..." -InformationAction Continue
+                        foreach ($newContact in $duplicateResult.DuplicateContacts) {
+                            # Find matching existing contact
+                            $email = $newContact.EmailAddresses[0].Address.ToLower()
+                            $existingContact = $duplicateResult.ExistingContacts | Where-Object { 
+                                $_.EmailAddresses -and $_.EmailAddresses[0].Address.ToLower() -eq $email 
+                            } | Select-Object -First 1
+                            
+                            if ($existingContact) {
+                                # Auto-merge: combine non-empty fields, prefer new data
+                                $mergedContact = $existingContact.PSObject.Copy()
+                                
+                                # Update with new data where new contact has more information
+                                if (-not [string]::IsNullOrWhiteSpace($newContact.CompanyName) -and [string]::IsNullOrWhiteSpace($mergedContact.CompanyName)) {
+                                    $mergedContact.CompanyName = $newContact.CompanyName
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($newContact.JobTitle) -and [string]::IsNullOrWhiteSpace($mergedContact.JobTitle)) {
+                                    $mergedContact.JobTitle = $newContact.JobTitle
+                                }
+                                if ($newContact.BusinessPhones -and $newContact.BusinessPhones.Count -gt 0 -and $mergedContact.BusinessPhones.Count -eq 0) {
+                                    $mergedContact.BusinessPhones = $newContact.BusinessPhones
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($newContact.MobilePhone) -and [string]::IsNullOrWhiteSpace($mergedContact.MobilePhone)) {
+                                    $mergedContact.MobilePhone = $newContact.MobilePhone
+                                }
+                                
+                                # Add merged contact for updating existing record
+                                $mergedContacts += @{
+                                    ExistingContactId = $existingContact.Id
+                                    MergedContact     = $mergedContact
+                                    TargetFolder      = $existingContact.SourceFolderName
+                                }
+                                
+                                Write-Verbose "Auto-merged contact: $($newContact.DisplayName) with existing contact in $($existingContact.SourceFolderName)"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            $contactsToImport = $validationResult.ValidContacts
+        }
+        
+        # Import contacts to their respective folders
+        Write-Information "" -InformationAction Continue
+        Write-Information "📥 IMPORTING CONTACTS..." -InformationAction Continue
+        
+        $importResults = @{
+            SuccessCount     = 0
+            FailureCount     = 0
+            UpdatedCount     = 0
+            SkippedCount     = $skippedDuplicates.Count
+            ImportedContacts = @()
+            UpdatedContacts  = @()
+            Errors           = @()
+            FolderBreakdown  = @{}
+        }
+        
+        # Import unique/new contacts
+        foreach ($folderName in $folderGroups.Keys) {
+            $folderContacts = $folderGroups[$folderName] | Where-Object { $_ -in $contactsToImport }
+            if (-not $folderContacts -or $folderContacts.Count -eq 0) { continue }
+            
+            $targetFolder = $targetFolders[$folderName]
+            Write-Information "  📁 Importing $($folderContacts.Count) contacts to '$folderName'..." -InformationAction Continue
+            
+            $importResults.FolderBreakdown[$folderName] = @{ Success = 0; Failed = 0 }
+            
+            foreach ($contact in $folderContacts) {
+                try {
+                    $graphContact = Convert-ToGraphContact -Contact $contact
+                    
+                    if ($targetFolder.Id -eq "default") {
+                        # Import to default contacts folder
+                        $uri = "https://graph.microsoft.com/v1.0/users/$UserEmail/contacts"
+                        $body = $graphContact | ConvertTo-Json -Depth 10
+                        $createdContact = Invoke-MgGraphRequest -Uri $uri -Method POST -Body $body
+                    }
+                    else {
+                        # Import to specific folder
+                        $createdContact = Add-ContactToFolder -UserEmail $UserEmail -FolderId $targetFolder.Id -Contact $graphContact
+                    }
+                    
+                    $importResults.SuccessCount++
+                    $importResults.FolderBreakdown[$folderName].Success++
+                    $importResults.ImportedContacts += @{
+                        Contact      = $contact
+                        CreatedId    = $createdContact.id
+                        TargetFolder = $folderName
+                    }
+                    
+                    Write-Verbose "✅ Imported: $($contact.DisplayName) to $folderName"
+                }
+                catch {
+                    $importResults.FailureCount++
+                    $importResults.FolderBreakdown[$folderName].Failed++
+                    $importResults.Errors += "Failed to import '$($contact.DisplayName)' to '$folderName': $($_.Exception.Message)"
+                    Write-Warning "❌ Failed to import '$($contact.DisplayName)': $($_.Exception.Message)"
+                }
+            }
+        }
+        
+        # Update merged contacts
+        foreach ($mergeInfo in $mergedContacts) {
+            try {
+                Update-ExistingContact -UserEmail $UserEmail -ExistingContactId $mergeInfo.ExistingContactId -BackupContact $mergeInfo.MergedContact
+                $importResults.UpdatedCount++
+                $importResults.UpdatedContacts += $mergeInfo
+                Write-Verbose "✅ Updated existing contact: $($mergeInfo.MergedContact.DisplayName)"
+            }
+            catch {
+                $importResults.Errors += "Failed to update existing contact '$($mergeInfo.MergedContact.DisplayName)': $($_.Exception.Message)"
+                Write-Warning "❌ Failed to update existing contact: $($_.Exception.Message)"
+            }
+        }
+        
+        # Final summary
+        Write-Information "" -InformationAction Continue
+        Write-Information "🎉 IMPORT COMPLETED!" -InformationAction Continue
+        Write-Information "========================================" -InformationAction Continue
+        Write-Information "📊 SUMMARY:" -InformationAction Continue
+        Write-Information "  ✅ Successfully imported: $($importResults.SuccessCount) contacts" -InformationAction Continue
+        Write-Information "  🔄 Updated existing: $($importResults.UpdatedCount) contacts" -InformationAction Continue
+        Write-Information "  ⏭️  Skipped duplicates: $($importResults.SkippedCount) contacts" -InformationAction Continue
+        Write-Information "  ❌ Failed imports: $($importResults.FailureCount) contacts" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        Write-Information "📁 FOLDER BREAKDOWN:" -InformationAction Continue
+        foreach ($folder in $importResults.FolderBreakdown.Keys | Sort-Object) {
+            $stats = $importResults.FolderBreakdown[$folder]
+            Write-Information "  📂 ${folder}: $($stats.Success) imported, $($stats.Failed) failed" -InformationAction Continue
+        }
+        Write-Information "========================================" -InformationAction Continue
+        
+        if ($importResults.Errors.Count -gt 0) {
+            Write-Information "" -InformationAction Continue
+            Write-Information "⚠️  ERRORS ENCOUNTERED:" -InformationAction Continue
+            foreach ($error in $importResults.Errors) {
+                Write-Warning "  • $error"
+            }
+        }
+        
+        return @{
+            Success          = $true
+            Message          = "Intelligent CSV import completed successfully"
+            TotalProcessed   = $validationResult.ValidCount
+            SuccessCount     = $importResults.SuccessCount
+            UpdatedCount     = $importResults.UpdatedCount
+            SkippedCount     = $importResults.SkippedCount
+            FailureCount     = $importResults.FailureCount
+            FolderBreakdown  = $importResults.FolderBreakdown
+            ImportedContacts = $importResults.ImportedContacts
+            UpdatedContacts  = $importResults.UpdatedContacts
+            Errors           = $importResults.Errors
+        }
+        
+    }
+    catch {
+        $errorMessage = "Intelligent CSV import failed: $($_.Exception.Message)"
+        Write-Error $errorMessage
+        
+        return @{
+            Success        = $false
+            Message        = $errorMessage
+            TotalProcessed = 0
+            SuccessCount   = 0
+            UpdatedCount   = 0
+            SkippedCount   = 0
+            FailureCount   = 0
+        }
+    }
+}
+
 # Export module functions
 Export-ModuleMember -Function @(
     'Backup-UserContacts',
     'Restore-UserContacts',
     'Import-UserContacts',
+    'Import-CSVWithIntelligentPlacement',
     'Get-UserContactFolders', 
     'Get-ContactsFromFolder',
     'Export-ContactsToVCard',
