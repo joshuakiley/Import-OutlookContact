@@ -35,7 +35,8 @@ try {
     if (-not (Test-GraphConnection)) {
         Write-Host "🔐 Connecting to Microsoft Graph..." -ForegroundColor Yellow
         Initialize-GraphAuthenticationAuto
-    } else {
+    }
+    else {
         Write-Host "✅ Already authenticated to Microsoft Graph" -ForegroundColor Green
     }
     
@@ -59,7 +60,8 @@ try {
     foreach ($contact in $importedContacts) {
         $email = if ($contact.EmailAddresses -and $contact.EmailAddresses.Count -gt 0) { 
             $contact.EmailAddresses[0].Address 
-        } else { 
+        }
+        else { 
             "[NO EMAIL]" 
         }
         Write-Host "  • $($contact.DisplayName) - $email ($($contact.CompanyName))" -ForegroundColor White
@@ -130,7 +132,8 @@ try {
         Write-Host "  📁 '$folderName' folder not found, creating it..." -ForegroundColor Yellow
         $targetFolder = Get-OrCreateContactFolder -UserEmail $userEmail -FolderName $folderName
         Write-Host "✅ '$folderName' folder created successfully (ID: $($targetFolder.Id))" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "✅ '$folderName' folder already exists (ID: $($targetFolder.Id))" -ForegroundColor Green
     }
     
@@ -143,35 +146,69 @@ try {
     # Add default contacts
     foreach ($contact in $allDefaultContacts) {
         $contactObj = [PSCustomObject]@{
-            Id = $contact.id
-            DisplayName = $contact.displayName
-            EmailAddresses = if ($contact.emailAddresses) { 
-                $contact.emailAddresses | ForEach-Object { @{ Address = $_.address } }
-            } else { @() }
-            CompanyName = $contact.companyName
-            JobTitle = $contact.jobTitle
-            BusinessPhones = if ($contact.businessPhones) { $contact.businessPhones } else { @() }
-            MobilePhone = $contact.mobilePhone
-            SourceFolderName = "Contacts" # Default folder
-            SourceFolderId = "default"
+            Id               = $contact.id
+            DisplayName      = $contact.displayName
+            EmailAddresses   = if ($contact.emailAddresses) { 
+                # Ensure we always work with an array, but handle it properly
+                $emailList = @()
+                if ($contact.emailAddresses -is [Array]) {
+                    $emailList = $contact.emailAddresses
+                }
+                else {
+                    $emailList = @($contact.emailAddresses)
+                }
+                
+                $validEmails = @()
+                foreach ($emailItem in $emailList) {
+                    $emailAddr = if ($emailItem -and $emailItem.address) { $emailItem.address } elseif ($emailItem -and $emailItem.Address) { $emailItem.Address } else { $null }
+                    if ($emailAddr -and ![string]::IsNullOrWhiteSpace($emailAddr)) { 
+                        $validEmails += @{ Address = $emailAddr }
+                    }
+                }
+                $validEmails
+            }
+            else { @() }
+            CompanyName      = $contact.companyName
+            JobTitle         = $contact.jobTitle
+            BusinessPhones   = if ($contact.businessPhones) { $contact.businessPhones } else { @() }
+            MobilePhone      = $contact.mobilePhone
+            SourceFolderName = $contact.SourceFolderName
+            SourceFolderId   = $contact.SourceFolderId
         }
         $allExistingContacts += $contactObj
     }
-    
+
     # Add named folder contacts
     foreach ($contact in $allNamedContacts) {
         $contactObj = [PSCustomObject]@{
-            Id = $contact.id
-            DisplayName = $contact.displayName
-            EmailAddresses = if ($contact.emailAddresses) { 
-                $contact.emailAddresses | ForEach-Object { @{ Address = $_.address } }
-            } else { @() }
-            CompanyName = $contact.companyName
-            JobTitle = $contact.jobTitle
-            BusinessPhones = if ($contact.businessPhones) { $contact.businessPhones } else { @() }
-            MobilePhone = $contact.mobilePhone
+            Id               = $contact.id
+            DisplayName      = $contact.displayName
+            EmailAddresses   = if ($contact.emailAddresses) { 
+                # Ensure we always work with an array, but handle it properly
+                $emailList = @()
+                if ($contact.emailAddresses -is [Array]) {
+                    $emailList = $contact.emailAddresses
+                }
+                else {
+                    $emailList = @($contact.emailAddresses)
+                }
+                
+                $validEmails = @()
+                foreach ($emailItem in $emailList) {
+                    $emailAddr = if ($emailItem -and $emailItem.address) { $emailItem.address } elseif ($emailItem -and $emailItem.Address) { $emailItem.Address } else { $null }
+                    if ($emailAddr -and ![string]::IsNullOrWhiteSpace($emailAddr)) { 
+                        $validEmails += @{ Address = $emailAddr }
+                    }
+                }
+                $validEmails
+            }
+            else { @() }
+            CompanyName      = $contact.companyName
+            JobTitle         = $contact.jobTitle
+            BusinessPhones   = if ($contact.businessPhones) { $contact.businessPhones } else { @() }
+            MobilePhone      = $contact.mobilePhone
             SourceFolderName = $contact.SourceFolderName
-            SourceFolderId = $contact.SourceFolderId
+            SourceFolderId   = $contact.SourceFolderId
         }
         $allExistingContacts += $contactObj
     }
@@ -180,20 +217,31 @@ try {
     
     # Build email lookup for existing contacts
     $existingEmails = @{}
+    $debugEmailCount = 0
+    $debugNoEmailCount = 0
+    
     foreach ($contact in $allExistingContacts) {
         if ($contact.EmailAddresses -and $contact.EmailAddresses.Count -gt 0) {
-            $firstEmail = $contact.EmailAddresses[0]
+            # Use different method to get first email to avoid array access issues
+            $firstEmail = $contact.EmailAddresses | Select-Object -First 1
             if ($firstEmail -and $firstEmail.Address -and ![string]::IsNullOrWhiteSpace($firstEmail.Address)) {
                 $email = $firstEmail.Address.ToLower()
                 if (-not $existingEmails.ContainsKey($email)) {
                     $existingEmails[$email] = @()
                 }
                 $existingEmails[$email] += $contact
+                $debugEmailCount++
             }
+            else {
+                $debugNoEmailCount++
+            }
+        }
+        else {
+            $debugNoEmailCount++
         }
     }
     
-    Write-Host "📧 Indexed $($existingEmails.Keys.Count) unique email addresses" -ForegroundColor Cyan
+    Write-Host "📧 Indexed $($existingEmails.Keys.Count) unique email addresses ($debugEmailCount total with emails, $debugNoEmailCount without emails)" -ForegroundColor Cyan
     
     # Step 6: Process each contact for import or merge
     Write-Host "`n🤝 STEP 6: Processing contacts for import/merge..." -ForegroundColor Yellow
@@ -249,12 +297,13 @@ try {
                         } while ([int]$selection -lt 1 -or [int]$selection -gt $matchingContacts.Count)
                         
                         $selectedExisting = $matchingContacts[[int]$selection - 1]
-                    } else {
+                    }
+                    else {
                         $selectedExisting = $matchingContacts[0]
                     }
                     
                     $contactsToMerge += @{
-                        NewContact = $newContact
+                        NewContact      = $newContact
                         ExistingContact = $selectedExisting
                     }
                     Write-Host "✅ Will merge with $($selectedExisting.DisplayName)" -ForegroundColor Green
@@ -268,7 +317,8 @@ try {
                     Write-Host "📥 Will import $($newContact.DisplayName) as new contact" -ForegroundColor Blue
                 }
             }
-        } else {
+        }
+        else {
             # No duplicate found, import as new
             $contactsToImport += $newContact
             Write-Host "✅ $($newContact.DisplayName) - no duplicates, will import" -ForegroundColor Green
@@ -300,9 +350,9 @@ try {
     
     $results = @{
         ImportedCount = 0
-        MergedCount = 0
-        FailedCount = 0
-        Errors = @()
+        MergedCount   = 0
+        FailedCount   = 0
+        Errors        = @()
     }
     
     # Import new contacts to target folder
@@ -339,7 +389,8 @@ try {
                     Update-ExistingContact -UserEmail $userEmail -ExistingContactId $mergeInfo.ExistingContact.Id -BackupContact $mergedContact
                     $results.MergedCount++
                     Write-Host "  ✅ Merged: $($mergedContact.DisplayName)" -ForegroundColor Green
-                } else {
+                }
+                else {
                     Write-Host "  ⏭️  Merge cancelled for: $($mergeInfo.NewContact.DisplayName)" -ForegroundColor Yellow
                 }
             }
@@ -369,7 +420,8 @@ try {
         }
     }
     
-} catch {
+}
+catch {
     Write-Host "`n❌ ERROR: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Stack Trace:" -ForegroundColor Red
     Write-Host $_.ScriptStackTrace -ForegroundColor Red
