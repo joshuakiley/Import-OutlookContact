@@ -274,13 +274,25 @@ try {
             # Ask user what to do
             Write-Host "`nWhat would you like to do?" -ForegroundColor White
             Write-Host "  [M] Merge with existing contact" -ForegroundColor Green
+            if ($matchingContacts.Count -gt 1) {
+                Write-Host "  [C] Consolidate all duplicates into target folder '$folderName'" -ForegroundColor Magenta
+            }
             Write-Host "  [S] Skip this contact" -ForegroundColor Yellow
             Write-Host "  [I] Import as new contact anyway" -ForegroundColor Blue
             
+            $validChoices = @('M', 'S', 'I')
+            if ($matchingContacts.Count -gt 1) {
+                $validChoices += 'C'
+            }
+            
             do {
-                $choice = Read-Host "Your choice (M/S/I)"
+                if ($matchingContacts.Count -gt 1) {
+                    $choice = Read-Host "Your choice (M/C/S/I)"
+                } else {
+                    $choice = Read-Host "Your choice (M/S/I)"
+                }
                 $choice = $choice.ToUpper()
-            } while ($choice -notin @('M', 'S', 'I'))
+            } while ($choice -notin $validChoices)
             
             switch ($choice) {
                 'M' {
@@ -307,6 +319,24 @@ try {
                         ExistingContact = $selectedExisting
                     }
                     Write-Host "✅ Will merge with $($selectedExisting.DisplayName)" -ForegroundColor Green
+                }
+                'C' {
+                    # Consolidate all duplicates - merge them all into the target folder
+                    Write-Host "🔄 Will consolidate all $($matchingContacts.Count) duplicates into '$folderName' folder" -ForegroundColor Magenta
+                    
+                    # Create a consolidation entry that includes all existing contacts
+                    $contactsToMerge += @{
+                        NewContact         = $newContact
+                        ExistingContacts   = $matchingContacts  # Array of all duplicates
+                        ConsolidateMode    = $true
+                        TargetFolder       = $folderName
+                        TargetFolderId     = $targetFolder.Id
+                    }
+                    
+                    foreach ($existing in $matchingContacts) {
+                        $folderDisplay = if ($existing.SourceFolderName) { $existing.SourceFolderName } else { "default" }
+                        Write-Host "  📋 Will consolidate: $($existing.DisplayName) from '$folderDisplay'" -ForegroundColor Gray
+                    }
                 }
                 'S' {
                     $skippedContacts += $newContact
@@ -382,16 +412,68 @@ try {
         
         foreach ($mergeInfo in $contactsToMerge) {
             try {
-                $mergedContact = Invoke-InteractiveMerge -ExistingContact $mergeInfo.ExistingContact -NewContact $mergeInfo.NewContact
-                
-                if ($mergedContact) {
-                    # Update the existing contact
-                    Update-ExistingContact -UserEmail $userEmail -ExistingContactId $mergeInfo.ExistingContact.Id -BackupContact $mergedContact
+                if ($mergeInfo.ConsolidateMode) {
+                    # Consolidation mode: merge all duplicates into target folder
+                    Write-Host "  🔄 Consolidating $($mergeInfo.ExistingContacts.Count) duplicates for $($mergeInfo.NewContact.DisplayName)" -ForegroundColor Magenta
+                    
+                    # Start with the new contact data
+                    $consolidatedContact = $mergeInfo.NewContact
+                    
+                    # Merge data from all existing contacts
+                    foreach ($existingContact in $mergeInfo.ExistingContacts) {
+                        Write-Host "    📋 Merging data from '$($existingContact.SourceFolderName)' folder..." -ForegroundColor Gray
+                        
+                        # Simple auto-merge logic for consolidation (can be enhanced later)
+                        if ([string]::IsNullOrWhiteSpace($consolidatedContact.JobTitle) -and ![string]::IsNullOrWhiteSpace($existingContact.JobTitle)) {
+                            $consolidatedContact.JobTitle = $existingContact.JobTitle
+                        }
+                        if ([string]::IsNullOrWhiteSpace($consolidatedContact.CompanyName) -and ![string]::IsNullOrWhiteSpace($existingContact.CompanyName)) {
+                            $consolidatedContact.CompanyName = $existingContact.CompanyName
+                        }
+                        if ([string]::IsNullOrWhiteSpace($consolidatedContact.MobilePhone) -and ![string]::IsNullOrWhiteSpace($existingContact.MobilePhone)) {
+                            $consolidatedContact.MobilePhone = $existingContact.MobilePhone
+                        }
+                        
+                        # Combine business phones
+                        if ($existingContact.BusinessPhones -and $existingContact.BusinessPhones.Count -gt 0) {
+                            $consolidatedContact.BusinessPhones = @($consolidatedContact.BusinessPhones) + @($existingContact.BusinessPhones) | Sort-Object -Unique
+                        }
+                    }
+                    
+                    # Import the consolidated contact to target folder
+                    $graphContact = Convert-ToGraphContact -Contact $consolidatedContact
+                    Add-ContactToFolder -UserEmail $userEmail -FolderId $mergeInfo.TargetFolderId -Contact $graphContact | Out-Null
+                    
+                    # Delete all existing duplicates
+                    foreach ($existingContact in $mergeInfo.ExistingContacts) {
+                        try {
+                            # Delete the contact using Microsoft Graph API
+                            $deleteUri = "https://graph.microsoft.com/v1.0/users/$userEmail/contacts/$($existingContact.Id)"
+                            Invoke-MgGraphRequest -Uri $deleteUri -Method DELETE
+                            $folderDisplay = if ($existingContact.SourceFolderName) { $existingContact.SourceFolderName } else { "default" }
+                            Write-Host "    🗑️  Removed duplicate from '$folderDisplay'" -ForegroundColor Gray
+                        }
+                        catch {
+                            Write-Host "    ⚠️  Failed to remove duplicate from '$($existingContact.SourceFolderName)': $($_.Exception.Message)" -ForegroundColor Yellow
+                        }
+                    }
+                    
                     $results.MergedCount++
-                    Write-Host "  ✅ Merged: $($mergedContact.DisplayName)" -ForegroundColor Green
+                    Write-Host "  ✅ Consolidated: $($consolidatedContact.DisplayName) → '$($mergeInfo.TargetFolder)' folder" -ForegroundColor Green
                 }
                 else {
-                    Write-Host "  ⏭️  Merge cancelled for: $($mergeInfo.NewContact.DisplayName)" -ForegroundColor Yellow
+                    # Standard single merge mode
+                    $mergedContact = Invoke-InteractiveMerge -ExistingContact $mergeInfo.ExistingContact -NewContact $mergeInfo.NewContact
+                    
+                    if ($mergedContact) {
+                        # Update the existing contact
+                        Update-ExistingContact -UserEmail $userEmail -ExistingContactId $mergeInfo.ExistingContact.Id -BackupContact $mergedContact
+                        $results.MergedCount++
+                        Write-Host "  ✅ Merged: $($mergedContact.DisplayName)" -ForegroundColor Green
+                    }
+                    else {
+                        Write-Host "  ⏭️  Merge cancelled for: $($mergeInfo.NewContact.DisplayName)" -ForegroundColor Yellow
+                    }
                 }
             }
             catch {
