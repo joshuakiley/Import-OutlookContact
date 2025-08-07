@@ -1,5 +1,11 @@
 // vCard specific types for the web interface
 
+export interface ContactFolder {
+  Id: string;
+  DisplayName: string;
+  IsDefault: boolean;
+}
+
 export interface VCardContact {
   displayName: string;
   givenName?: string;
@@ -63,6 +69,25 @@ export interface VCardImportResponse {
   validationErrors?: string[];
   duplicateEmails?: string[];
   parsedContacts?: VCardContact[];
+}
+
+export interface VCardApiResponse {
+  isValid: boolean;
+  vCardVersion?: string;
+  contactCount: number;
+  statistics: {
+    emailsFound: number;
+    phonesFound: number;
+    addressesFound: number;
+    companiesFound: number;
+    duplicateEmails: number;
+  };
+  warnings: string[];
+  importedContacts?: number;
+  skippedContacts?: number;
+  errorContacts?: number;
+  error?: string;
+  rawOutput?: string;
 }
 
 export interface VCardValidationResult {

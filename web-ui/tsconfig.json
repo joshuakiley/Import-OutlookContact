@@ -1,5 +1,4 @@
 {
-  "extends": "./.svelte-kit/tsconfig.json",
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
@@ -20,6 +19,9 @@
     "target": "ES2022",
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
     "paths": {
       "$lib": ["./src/lib"],
       "$lib/*": ["./src/lib/*"],
@@ -32,8 +34,10 @@
       "$utils": ["./src/lib/utils"],
       "$utils/*": ["./src/lib/utils/*"],
       "$api": ["./src/lib/api"],
-      "$api/*": ["./src/lib/api/*"]
-    }
+      "$api/*": ["./src/lib/api/*"],
+      "$app/*": ["./.svelte-kit/runtime/app/*"]
+    },
+    "rootDirs": [".", "./.svelte-kit/types"]
   },
   "include": [
     "ambient.d.ts",

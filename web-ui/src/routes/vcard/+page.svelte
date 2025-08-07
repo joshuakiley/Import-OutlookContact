@@ -1,9 +1,16 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import type {
     VCardImportResponse,
     VCardValidationResult,
+    ContactFolder,
   } from "$lib/types/vcard";
+  import {
+    importVCard as importVCardAPI,
+    getUserFolders,
+    createContactFolder,
+    type VCardImportRequest,
+    type CreateFolderRequest,
+  } from "$lib/utils/api";
 
   // State management
   let selectedFile: File | null = null;
@@ -12,13 +19,19 @@
   let isImporting = false;
   let validationResult: VCardValidationResult | null = null;
   let importResult: VCardImportResponse | null = null;
-  let showAdvanced = false;
+  let errorMessage = "";
+
+  // Folder management
+  let userFolders: ContactFolder[] = [];
+  let isLoadingFolders = false;
+  let showCreateFolder = false;
+  let newFolderName = "";
+  let isCreatingFolder = false;
 
   // Form data
   let userEmail = "";
   let contactFolder = "";
   let duplicateAction: "Skip" | "Merge" | "Overwrite" | "Consolidate" = "Merge";
-  let validateOnly = true;
   let enhancedParsing = true;
 
   // File validation
@@ -79,468 +92,618 @@
     importResult = null;
   }
 
-  // Mock API calls (replace with actual backend integration)
-  async function validateVCard(): Promise<VCardValidationResult> {
-    // This would call your PowerShell backend
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          isValid: true,
-          vCardVersion: "3.0",
-          contactCount: 99,
-          statistics: {
-            emailsFound: 43,
-            phonesFound: 96,
-            addressesFound: 0,
-            companiesFound: 78,
-            duplicateEmails: 0,
-          },
-          warnings: ["Some contacts missing mobile phone numbers"],
-        });
-      }, 2000);
-    });
+  // Reset state
+  function resetState() {
+    validationResult = null;
+    importResult = null;
+    errorMessage = "";
   }
 
-  async function importVCard(): Promise<VCardImportResponse> {
-    // This would call your PowerShell backend
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          message: "Successfully imported contacts",
-          totalContacts: 99,
-          validContacts: 99,
-          invalidContacts: 0,
-          duplicatesFound: 5,
-          contactsProcessed: 94,
-        });
-      }, 3000);
-    });
+  // Folder management functions
+  async function loadUserFolders() {
+    if (!userEmail) return;
+
+    isLoadingFolders = true;
+    try {
+      const result = await getUserFolders(userEmail);
+      if (result.success) {
+        userFolders = result.folders;
+      } else {
+        errorMessage = result.error || "Failed to load folders";
+      }
+    } catch (error) {
+      console.error("Failed to load folders:", error);
+      errorMessage =
+        error instanceof Error ? error.message : "Failed to load folders";
+    } finally {
+      isLoadingFolders = false;
+    }
   }
 
+  async function createNewFolder() {
+    if (!userEmail || !newFolderName.trim()) return;
+
+    isCreatingFolder = true;
+    try {
+      const request: CreateFolderRequest = {
+        userEmail,
+        folderName: newFolderName.trim(),
+      };
+
+      const result = await createContactFolder(request);
+      if (result.success && result.folder) {
+        userFolders = [...userFolders, result.folder];
+        contactFolder = result.folder.DisplayName;
+        newFolderName = "";
+        showCreateFolder = false;
+      } else {
+        errorMessage = result.error || "Failed to create folder";
+      }
+    } catch (error) {
+      console.error("Failed to create folder:", error);
+      errorMessage =
+        error instanceof Error ? error.message : "Failed to create folder";
+    } finally {
+      isCreatingFolder = false;
+    }
+  }
+
+  // Watch for userEmail changes to load folders
+  $: if (userEmail && userEmail.includes("@")) {
+    loadUserFolders();
+  }
+
+  // Real API calls to backend
   async function handleValidate() {
-    if (!selectedFile || !userEmail) return;
+    if (!selectedFile) return;
 
     isValidating = true;
+    resetState();
+
     try {
-      validationResult = await validateVCard();
+      const request: VCardImportRequest = {
+        file: selectedFile,
+        duplicateAction,
+        validateOnly: true,
+        enhancedParsing,
+      };
+
+      if (userEmail) request.userEmail = userEmail;
+      if (contactFolder) request.contactFolder = contactFolder;
+
+      const result = await importVCardAPI(request);
+
+      // Convert API response to validation result format
+      validationResult = {
+        isValid: result.isValid,
+        vCardVersion: result.vCardVersion || "Unknown",
+        contactCount: result.contactCount,
+        statistics: result.statistics,
+        warnings: result.warnings,
+      };
+
+      if (result.error) {
+        errorMessage = result.error;
+      }
     } catch (error) {
       console.error("Validation failed:", error);
-      alert("Validation failed. Please try again.");
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Validation failed. Please try again.";
     } finally {
       isValidating = false;
     }
   }
 
   async function handleImport() {
-    if (!selectedFile || !userEmail) return;
+    if (!selectedFile) return;
 
     isImporting = true;
+    resetState();
+
     try {
-      importResult = await importVCard();
+      const request: VCardImportRequest = {
+        file: selectedFile,
+        duplicateAction,
+        validateOnly: false,
+        enhancedParsing,
+      };
+
+      if (userEmail) request.userEmail = userEmail;
+      if (contactFolder) request.contactFolder = contactFolder;
+
+      const result = await importVCardAPI(request);
+
+      // Convert API response to import result format
+      importResult = {
+        success: result.isValid && !result.error,
+        message: result.error || "Import completed successfully",
+        totalContacts: result.contactCount,
+        validContacts:
+          (result.importedContacts || 0) + (result.skippedContacts || 0),
+        invalidContacts: result.errorContacts || 0,
+        duplicatesFound: result.skippedContacts || 0,
+        contactsProcessed: result.importedContacts || 0,
+      };
+
+      if (result.error) {
+        errorMessage = result.error;
+      }
     } catch (error) {
       console.error("Import failed:", error);
-      alert("Import failed. Please try again.");
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Import failed. Please try again.";
+      importResult = {
+        success: false,
+        message: "Import failed",
+        totalContacts: 0,
+        validContacts: 0,
+        invalidContacts: 0,
+        duplicatesFound: 0,
+        contactsProcessed: 0,
+      };
     } finally {
       isImporting = false;
     }
   }
 
-  function resetForm() {
+  function clearFile() {
     selectedFile = null;
     validationResult = null;
     importResult = null;
-    validateOnly = true;
+    errorMessage = "";
   }
-
-  onMount(() => {
-    // Initialize with default user email if available
-    userEmail = "user@example.com"; // This would come from authentication
-  });
 </script>
 
 <svelte:head>
   <title>vCard Import - Import-OutlookContact</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gray-50">
-  <!-- Header -->
-  <header class="bg-white border-b border-gray-200">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex justify-between items-center h-16">
-        <div class="flex items-center">
-          <h1 class="text-2xl font-bold text-blue-600">📱 vCard Import</h1>
-          <span
-            class="ml-3 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full"
-          >
-            Enhanced Parser
-          </span>
-        </div>
-        <div class="flex items-center space-x-4">
-          <a href="/" class="text-gray-600 hover:text-gray-900"
-            >← Back to Dashboard</a
-          >
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Content -->
-  <main class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-    <!-- Progress Steps -->
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
     <div class="mb-8">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center">
-          <div
-            class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-medium"
-          >
-            1
-          </div>
-          <span class="ml-2 text-sm font-medium text-gray-900">Upload File</span
-          >
-        </div>
-        <div class="flex-1 mx-4 h-0.5 bg-gray-300"></div>
-        <div class="flex items-center">
-          <div
-            class="flex items-center justify-center w-8 h-8 rounded-full {validationResult
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-300 text-gray-500'} text-sm font-medium"
-          >
-            2
-          </div>
-          <span
-            class="ml-2 text-sm font-medium {validationResult
-              ? 'text-gray-900'
-              : 'text-gray-500'}">Validate</span
-          >
-        </div>
-        <div class="flex-1 mx-4 h-0.5 bg-gray-300"></div>
-        <div class="flex items-center">
-          <div
-            class="flex items-center justify-center w-8 h-8 rounded-full {importResult
-              ? 'bg-green-600 text-white'
-              : 'bg-gray-300 text-gray-500'} text-sm font-medium"
-          >
-            3
-          </div>
-          <span
-            class="ml-2 text-sm font-medium {importResult
-              ? 'text-gray-900'
-              : 'text-gray-500'}">Import</span
-          >
-        </div>
-      </div>
+      <nav class="flex" aria-label="Breadcrumb">
+        <ol class="flex items-center space-x-4">
+          <li>
+            <a href="/" class="text-primary-600 hover:text-primary-700">
+              Dashboard
+            </a>
+          </li>
+          <li class="text-gray-500">/</li>
+          <li class="text-gray-900 font-medium">vCard Import</li>
+        </ol>
+      </nav>
+      <h1 class="mt-4 text-3xl font-bold text-gray-900">📱 vCard Import</h1>
+      <p class="mt-2 text-lg text-gray-600">
+        Import contacts from vCard (.vcf) files with advanced parsing and
+        duplicate handling
+      </p>
     </div>
 
-    <!-- File Upload -->
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4">
-        📂 Select vCard File
-      </h2>
+    <!-- Main Content -->
+    <div class="space-y-6">
+      <!-- File Upload -->
+      {#if !selectedFile}
+        <div class="card p-8">
+          <h2 class="text-xl font-semibold text-gray-900 mb-4">
+            📁 Upload vCard File
+          </h2>
 
-      <!-- Drag & Drop Area -->
-      <div
-        class="border-2 border-dashed {dragOver
-          ? 'border-blue-400 bg-blue-50'
-          : 'border-gray-300'} rounded-lg p-8 text-center transition-colors"
-        on:drop={handleDrop}
-        on:dragover={handleDragOver}
-        on:dragleave={handleDragLeave}
-        role="button"
-        tabindex="0"
-      >
-        {#if selectedFile}
-          <div class="flex items-center justify-center mb-4">
-            <div
-              class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center"
-            >
-              <span class="text-blue-600 text-2xl">📋</span>
-            </div>
-          </div>
-          <p class="text-lg font-medium text-gray-900">{selectedFile.name}</p>
-          <p class="text-sm text-gray-500">
-            {(selectedFile.size / 1024).toFixed(1)} KB • {selectedFile.type ||
-              "vCard file"}
-          </p>
-          <button
-            class="mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium"
-            on:click={resetForm}
+          <!-- Drag & Drop Area -->
+          <div
+            class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-primary-400 transition-colors {dragOver
+              ? 'border-primary-500 bg-primary-50'
+              : ''}"
+            on:drop={handleDrop}
+            on:dragover={handleDragOver}
+            on:dragleave={handleDragLeave}
+            role="button"
+            tabindex="0"
           >
-            Choose different file
-          </button>
-        {:else}
-          <div class="flex items-center justify-center mb-4">
-            <div
-              class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center"
-            >
-              <span class="text-gray-400 text-2xl">📁</span>
-            </div>
-          </div>
-          <p class="text-lg font-medium text-gray-900 mb-2">
-            Drag and drop your vCard file here
-          </p>
-          <p class="text-sm text-gray-500 mb-4">
-            Supports .vcf and .vcard files up to 50MB
-          </p>
-          <label class="cursor-pointer">
-            <span
-              class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Browse Files
-            </span>
+            <div class="text-6xl mb-4">📱</div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">
+              Drop your vCard file here
+            </h3>
+            <p class="text-gray-600 mb-4">
+              or click to browse for .vcf or .vcard files
+            </p>
             <input
               type="file"
-              class="hidden"
-              accept=".vcf,.vcard,text/vcard,text/x-vcard"
+              accept=".vcf,.vcard"
               on:change={handleFileInput}
+              class="hidden"
+              id="fileInput"
             />
-          </label>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Import Settings -->
-    {#if selectedFile}
-      <div
-        class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6"
-      >
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">
-          ⚙️ Import Settings
-        </h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- User Email -->
-          <div>
-            <label
-              for="userEmail"
-              class="block text-sm font-medium text-gray-700 mb-1"
-            >
-              User Email
+            <label for="fileInput" class="btn-primary cursor-pointer">
+              📂 Choose File
             </label>
-            <input
-              id="userEmail"
-              type="email"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              bind:value={userEmail}
-              placeholder="user@example.com"
-              required
-            />
-          </div>
-
-          <!-- Contact Folder -->
-          <div>
-            <label
-              for="contactFolder"
-              class="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Contact Folder (Optional)
-            </label>
-            <input
-              id="contactFolder"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              bind:value={contactFolder}
-              placeholder="iPhone Contacts"
-            />
-          </div>
-
-          <!-- Duplicate Action -->
-          <div>
-            <label
-              for="duplicateAction"
-              class="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Duplicate Handling
-            </label>
-            <select
-              id="duplicateAction"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              bind:value={duplicateAction}
-            >
-              <option value="Skip">Skip Duplicates</option>
-              <option value="Merge">Merge Information</option>
-              <option value="Overwrite">Overwrite Existing</option>
-              <option value="Consolidate">Consolidate Contacts</option>
-            </select>
-          </div>
-
-          <!-- Enhanced Parsing -->
-          <div class="flex items-center">
-            <input
-              id="enhancedParsing"
-              type="checkbox"
-              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              bind:checked={enhancedParsing}
-            />
-            <label
-              for="enhancedParsing"
-              class="ml-2 text-sm font-medium text-gray-700"
-            >
-              Use Enhanced Parsing (Recommended for iPhone)
-            </label>
+            <p class="text-xs text-gray-500 mt-3">Maximum file size: 50MB</p>
           </div>
         </div>
+      {/if}
 
-        <!-- Advanced Options Toggle -->
-        <button
-          class="mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium"
-          on:click={() => (showAdvanced = !showAdvanced)}
-        >
-          {showAdvanced ? "▼" : "▶"} Advanced Options
-        </button>
+      <!-- File Selected and Actions -->
+      {#if selectedFile}
+        <div class="card p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-900">
+              📄 {selectedFile.name}
+            </h2>
+            <button
+              on:click={clearFile}
+              class="text-sm text-red-600 hover:text-red-700"
+            >
+              ✕ Remove
+            </button>
+          </div>
 
-        {#if showAdvanced}
-          <div class="mt-4 p-4 bg-gray-50 rounded-md">
-            <div class="flex items-center">
-              <input
-                id="validateOnly"
-                type="checkbox"
-                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                bind:checked={validateOnly}
-              />
-              <label
-                for="validateOnly"
-                class="ml-2 text-sm font-medium text-gray-700"
-              >
-                Validation Only Mode (Safe testing without importing)
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Form Configuration -->
+            <div class="space-y-4">
+              <h3 class="text-lg font-medium text-gray-900">Configuration</h3>
+
+              <div>
+                <label
+                  for="userEmail"
+                  class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  User Email {#if !userEmail}<span class="text-red-500">*</span
+                    >{/if}
+                </label>
+                <input
+                  type="email"
+                  id="userEmail"
+                  bind:value={userEmail}
+                  placeholder="user@company.com"
+                  class="input-field"
+                  required
+                />
+                {#if userEmail && !userEmail.includes("@")}
+                  <p class="text-xs text-gray-500 mt-1">
+                    Enter a valid email to load your contact folders
+                  </p>
+                {:else if userEmail && userEmail.includes("@") && userFolders.length > 0}
+                  <p class="text-xs text-green-600 mt-1">
+                    ✅ Loaded {userFolders.length} contact folders
+                  </p>
+                {/if}
+              </div>
+
+              <div>
+                <label
+                  for="duplicateAction"
+                  class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Duplicate Handling
+                </label>
+                <select
+                  id="duplicateAction"
+                  bind:value={duplicateAction}
+                  class="input-field"
+                >
+                  <option value="Skip">Skip duplicates</option>
+                  <option value="Merge">Compare and merge</option>
+                  <option value="Overwrite">Overwrite existing</option>
+                  <option value="Consolidate">Consolidate all data</option>
+                </select>
+
+                <!-- Duplicate Action Descriptions -->
+                <div class="mt-2 text-xs text-gray-600">
+                  {#if duplicateAction === "Skip"}
+                    <p>
+                      🚫 Skip importing contacts that already exist anywhere
+                    </p>
+                  {:else if duplicateAction === "Merge"}
+                    <div class="space-y-1">
+                      <p>
+                        🔍 <strong>Interactive comparison</strong> - Choose which
+                        data to keep from each contact
+                      </p>
+                      <p class="text-blue-600">
+                        📂 <strong>Folder selection:</strong> Choose which folder
+                        to place the merged contact in
+                      </p>
+                    </div>
+                  {:else if duplicateAction === "Overwrite"}
+                    <p>⚠️ Completely replace existing contacts with new data</p>
+                  {:else if duplicateAction === "Consolidate"}
+                    <p>
+                      🗂️ Automatically combine data and move to target folder,
+                      removing duplicates from other folders
+                    </p>
+                  {/if}
+                </div>
+              </div>
+
+              <!-- Contact Folder Selection -->
+              <div>
+                <label
+                  for="contactFolder"
+                  class="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Contact Folder
+                </label>
+                <div class="space-y-2">
+                  <div class="flex gap-2">
+                    <select
+                      id="contactFolder"
+                      bind:value={contactFolder}
+                      class="input-field flex-1"
+                      disabled={isLoadingFolders}
+                    >
+                      <option value="">Default (Contacts)</option>
+                      {#each userFolders as folder}
+                        <option value={folder.DisplayName}>
+                          {folder.DisplayName}
+                          {folder.IsDefault ? " (Default)" : ""}
+                        </option>
+                      {/each}
+                    </select>
+                    <button
+                      type="button"
+                      on:click={() => (showCreateFolder = !showCreateFolder)}
+                      class="btn-secondary px-3 py-2 text-sm"
+                      disabled={!userEmail}
+                    >
+                      ➕ New
+                    </button>
+                  </div>
+
+                  {#if isLoadingFolders}
+                    <p class="text-xs text-gray-500">Loading folders...</p>
+                  {/if}
+
+                  <!-- Create New Folder -->
+                  {#if showCreateFolder}
+                    <div class="bg-gray-50 rounded-lg p-3 border">
+                      <div class="flex gap-2">
+                        <input
+                          type="text"
+                          bind:value={newFolderName}
+                          placeholder="Enter folder name"
+                          class="input-field flex-1 text-sm"
+                          disabled={isCreatingFolder}
+                        />
+                        <button
+                          type="button"
+                          on:click={createNewFolder}
+                          disabled={!newFolderName.trim() || isCreatingFolder}
+                          class="btn-primary px-3 py-1 text-sm"
+                        >
+                          {#if isCreatingFolder}
+                            ⏳
+                          {:else}
+                            Create
+                          {/if}
+                        </button>
+                        <button
+                          type="button"
+                          on:click={() => {
+                            showCreateFolder = false;
+                            newFolderName = "";
+                          }}
+                          class="btn-secondary px-3 py-1 text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <label class="flex items-center">
+                <input
+                  type="checkbox"
+                  bind:checked={enhancedParsing}
+                  class="rounded text-primary-600 mr-2"
+                />
+                <span class="text-sm text-gray-700"
+                  >Enhanced iPhone parsing</span
+                >
               </label>
             </div>
-          </div>
-        {/if}
-      </div>
-    {/if}
 
-    <!-- Action Buttons -->
-    {#if selectedFile && userEmail}
-      <div class="flex space-x-4 mb-6">
-        <button
-          class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-          on:click={handleValidate}
-          disabled={isValidating || isImporting}
-        >
-          {#if isValidating}
-            <div
-              class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-            ></div>
-          {/if}
-          🔍 Validate vCard
-        </button>
+            <!-- Actions -->
+            <div class="space-y-4">
+              <h3 class="text-lg font-medium text-gray-900">Actions</h3>
 
-        {#if validationResult && !validateOnly}
-          <button
-            class="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            on:click={handleImport}
-            disabled={isImporting || isValidating}
-          >
-            {#if isImporting}
-              <div
-                class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"
-              ></div>
-            {/if}
-            📥 Import Contacts
-          </button>
-        {/if}
-      </div>
-    {/if}
+              <button
+                on:click={handleValidate}
+                disabled={isValidating || !userEmail}
+                class="btn-secondary w-full {isValidating || !userEmail
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''}"
+              >
+                {#if isValidating}
+                  🔄 Validating...
+                {:else}
+                  ✅ Validate Only
+                {/if}
+              </button>
 
-    <!-- Validation Results -->
-    {#if validationResult}
-      <div
-        class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6"
-      >
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">
-          📊 Validation Results
-        </h2>
+              <button
+                on:click={handleImport}
+                disabled={isImporting || !validationResult || !userEmail}
+                class="btn-primary w-full {isImporting ||
+                !validationResult ||
+                !userEmail
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''}"
+              >
+                {#if isImporting}
+                  📤 Importing...
+                {:else}
+                  📤 Import Contacts
+                {/if}
+              </button>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div class="text-center p-4 bg-blue-50 rounded-lg">
-            <div class="text-2xl font-bold text-blue-600">
-              {validationResult.contactCount}
+              <div class="text-xs text-gray-500 text-center space-y-1">
+                {#if !userEmail}
+                  <p class="text-red-500">⚠️ User email required</p>
+                {:else if !validationResult}
+                  <p>Please validate the file first</p>
+                {:else}
+                  <p class="text-green-600">✅ Ready to import</p>
+                {/if}
+              </div>
             </div>
-            <div class="text-sm text-gray-600">Total Contacts</div>
-          </div>
-          <div class="text-center p-4 bg-green-50 rounded-lg">
-            <div class="text-2xl font-bold text-green-600">
-              {validationResult.statistics?.emailsFound || 0}
-            </div>
-            <div class="text-sm text-gray-600">Email Addresses</div>
-          </div>
-          <div class="text-center p-4 bg-purple-50 rounded-lg">
-            <div class="text-2xl font-bold text-purple-600">
-              {validationResult.statistics?.companiesFound || 0}
-            </div>
-            <div class="text-sm text-gray-600">Companies</div>
           </div>
         </div>
+      {/if}
 
-        {#if validationResult.statistics}
-          <div class="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              📞 Phone Numbers: {validationResult.statistics.phonesFound}
+      <!-- Validation Results -->
+      {#if validationResult}
+        <div class="card p-6">
+          <h2 class="text-xl font-semibold text-gray-900 mb-4">
+            ✅ Validation Results
+          </h2>
+
+          <div
+            class="bg-success-50 border border-success-200 rounded-lg p-4 mb-4"
+          >
+            <div class="flex items-center">
+              <div class="text-success-600 text-xl mr-3">✅</div>
+              <div>
+                <h3 class="text-sm font-medium text-success-800">
+                  File Validation Successful
+                </h3>
+                <p class="text-sm text-success-700 mt-1">
+                  vCard {validationResult.vCardVersion} • {validationResult.contactCount}
+                  contacts found
+                </p>
+              </div>
             </div>
-            <div>
-              🏠 Addresses: {validationResult.statistics.addressesFound}
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-primary-600">
+                {validationResult.statistics?.emailsFound || 0}
+              </div>
+              <div class="text-sm text-gray-600">Emails</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-primary-600">
+                {validationResult.statistics?.phonesFound || 0}
+              </div>
+              <div class="text-sm text-gray-600">Phones</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-primary-600">
+                {validationResult.statistics?.companiesFound || 0}
+              </div>
+              <div class="text-sm text-gray-600">Companies</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-primary-600">
+                {validationResult.statistics?.addressesFound || 0}
+              </div>
+              <div class="text-sm text-gray-600">Addresses</div>
             </div>
           </div>
-        {/if}
 
-        {#if validationResult.warnings && validationResult.warnings.length > 0}
-          <div class="mt-4">
-            <h3 class="font-medium text-yellow-800 mb-2">⚠️ Warnings:</h3>
-            <ul class="text-sm text-yellow-700 space-y-1">
-              {#each validationResult.warnings as warning}
-                <li>• {warning}</li>
-              {/each}
-            </ul>
+          {#if validationResult.warnings && validationResult.warnings.length > 0}
+            <div
+              class="mt-4 bg-warning-50 border border-warning-200 rounded-lg p-4"
+            >
+              <h4 class="text-sm font-medium text-warning-800 mb-2">
+                ⚠️ Warnings
+              </h4>
+              <ul class="text-sm text-warning-700 space-y-1">
+                {#each validationResult.warnings as warning}
+                  <li>• {warning}</li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Import Results -->
+      {#if importResult}
+        <div class="card p-6">
+          <h2 class="text-xl font-semibold text-gray-900 mb-4">
+            📊 Import Results
+          </h2>
+
+          <div
+            class="border rounded-lg p-4 mb-4 {importResult.success
+              ? 'bg-success-50 border-success-200'
+              : 'bg-error-50 border-error-200'}"
+          >
+            <div class="flex items-center">
+              <div
+                class="text-xl mr-3 {importResult.success
+                  ? 'text-success-600'
+                  : 'text-error-600'}"
+              >
+                {importResult.success ? "✅" : "❌"}
+              </div>
+              <div>
+                <h3
+                  class="text-sm font-medium {importResult.success
+                    ? 'text-success-800'
+                    : 'text-error-800'}"
+                >
+                  {importResult.message}
+                </h3>
+                <p
+                  class="text-sm mt-1 {importResult.success
+                    ? 'text-success-700'
+                    : 'text-error-700'}"
+                >
+                  {importResult.contactsProcessed} contacts imported
+                </p>
+              </div>
+            </div>
           </div>
-        {/if}
-      </div>
-    {/if}
 
-    <!-- Import Results -->
-    {#if importResult}
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">
-          {importResult.success ? "✅" : "❌"} Import Results
-        </h2>
-
-        {#if importResult.success}
-          <div class="bg-green-50 border border-green-200 rounded-md p-4 mb-4">
-            <p class="text-green-800 font-medium">{importResult.message}</p>
-          </div>
-
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <div class="font-medium text-gray-900">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-success-600">
                 {importResult.contactsProcessed}
               </div>
-              <div class="text-gray-600">Contacts Imported</div>
+              <div class="text-sm text-gray-600">Imported</div>
             </div>
-            <div>
-              <div class="font-medium text-gray-900">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-warning-600">
                 {importResult.duplicatesFound}
               </div>
-              <div class="text-gray-600">Duplicates Handled</div>
+              <div class="text-sm text-gray-600">Duplicates</div>
             </div>
-            <div>
-              <div class="font-medium text-gray-900">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-primary-600">
                 {importResult.validContacts}
               </div>
-              <div class="text-gray-600">Valid Contacts</div>
+              <div class="text-sm text-gray-600">Valid</div>
             </div>
-            <div>
-              <div class="font-medium text-gray-900">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="text-2xl font-bold text-error-600">
                 {importResult.invalidContacts}
               </div>
-              <div class="text-gray-600">Invalid Contacts</div>
+              <div class="text-sm text-gray-600">Invalid</div>
             </div>
           </div>
-        {:else}
-          <div class="bg-red-50 border border-red-200 rounded-md p-4">
-            <p class="text-red-800 font-medium">{importResult.message}</p>
+        </div>
+      {/if}
+
+      <!-- Error Display -->
+      {#if errorMessage}
+        <div class="bg-error-50 border border-error-200 rounded-lg p-4">
+          <div class="flex items-center">
+            <div class="text-error-600 text-xl mr-3">❌</div>
+            <div>
+              <h3 class="text-sm font-medium text-error-800">Error</h3>
+              <p class="text-sm text-error-700 mt-1">{errorMessage}</p>
+            </div>
           </div>
-        {/if}
-      </div>
-    {/if}
-  </main>
+        </div>
+      {/if}
+    </div>
+  </div>
 </div>
