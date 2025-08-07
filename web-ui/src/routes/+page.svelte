@@ -80,9 +80,14 @@
         <p class="text-gray-600 text-sm mb-4">
           Upload CSV, vCard, or other contact files with secure validation
         </p>
-        <button class="btn-primary w-full" disabled>
-          Start Import Wizard
-        </button>
+        <div class="space-y-2">
+          <a href="/vcard" class="block">
+            <button class="btn-primary w-full"> 📱 Import vCard (.vcf) </button>
+          </a>
+          <button class="btn-secondary w-full" disabled>
+            📊 Import CSV (Coming Soon)
+          </button>
+        </div>
       </div>
 
       <!-- Backup & Restore -->

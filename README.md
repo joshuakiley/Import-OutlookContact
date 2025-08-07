@@ -27,7 +27,8 @@
 
 - **🌐 Modern Web Interface:** Responsive Svelte UI with enterprise-grade security and accessibility
 - **👥 Multi-User Management:** Bulk operations across multiple users and contact folders
-- **📂 Advanced Import Support:** vCard (.vcf), Google CSV, Outlook CSV, and generic CSV with field mapping
+- **📂 Enhanced vCard Import:** Advanced iPhone/Android/CRM vCard parsing with multi-field support and consolidation
+- **📂 Advanced Import Support:** Multi-format CSV, vCard (.vcf), Google CSV, Outlook CSV with intelligent field mapping
 - **💾 Backup & Restore:** Automatic backups with preview functionality and point-in-time recovery
 - **🔍 Smart Duplicate Detection:** AI-powered duplicate detection with intelligent merging capabilities
 - **📁 Custom Folder Support:** Enterprise folder management (Vendors, Contractors, Clients)

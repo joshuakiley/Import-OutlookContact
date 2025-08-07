@@ -288,7 +288,8 @@ try {
             do {
                 if ($matchingContacts.Count -gt 1) {
                     $choice = Read-Host "Your choice (M/C/S/I)"
-                } else {
+                }
+                else {
                     $choice = Read-Host "Your choice (M/S/I)"
                 }
                 $choice = $choice.ToUpper()
@@ -326,11 +327,11 @@ try {
                     
                     # Create a consolidation entry that includes all existing contacts
                     $contactsToMerge += @{
-                        NewContact         = $newContact
-                        ExistingContacts   = $matchingContacts  # Array of all duplicates
-                        ConsolidateMode    = $true
-                        TargetFolder       = $folderName
-                        TargetFolderId     = $targetFolder.Id
+                        NewContact       = $newContact
+                        ExistingContacts = $matchingContacts  # Array of all duplicates
+                        ConsolidateMode  = $true
+                        TargetFolder     = $folderName
+                        TargetFolderId   = $targetFolder.Id
                     }
                     
                     foreach ($existing in $matchingContacts) {
